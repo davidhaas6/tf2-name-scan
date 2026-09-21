@@ -1,0 +1,26 @@
+[project]
+name = "tf2-name-scan"
+version = "0.1.0"
+description = "Resumable TF2 killfeed OCR corpus and username search"
+readme = "README.md"
+requires-python = ">=3.10.11"
+dependencies = ["Pillow>=10", "numpy>=1.26", "PyYAML>=6", "rapidfuzz>=3", "yt-dlp>=2025.1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+tf2scan = "tf2scan.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.9"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tf2scan"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

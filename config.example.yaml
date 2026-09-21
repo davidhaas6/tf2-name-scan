@@ -1,0 +1,42 @@
+# Paths are relative to this file. Copy to config.yaml and edit.
+output_dir: output
+sources: [] # YouTube channel /videos URLs, playlists, or individual video URLs
+query:
+  target_name: HumanWorm
+  aliases: []
+filters:
+  date_from: null # YYYY-MM-DD, inclusive
+  date_to: null
+  title_include: null # regular expression, case insensitive
+  title_exclude: null
+  min_duration_s: null
+  max_duration_s: null
+retain_downloads: true
+export_rows: true
+default_profile: default_tf2_720p
+profiles:
+  default_tf2_720p:
+    roi: {x: 0.52, y: 0.02, width: 0.47, height: 0.30}
+    row_count: 6
+    row_height: 0.145
+    row_step: 0.155
+    padding: {left: 8, right: 8, top: 2, bottom: 2}
+channels: {}
+# channels:
+#   UC_EXAMPLE: {profile: default_tf2_720p}
+scan:
+  fps: 1
+  batch_size: 32
+  upscale: 2
+  interpolation: bicubic
+  preprocessing: rgb # rgb, grayscale, or contrast
+  min_contrast: 4
+  min_edge_density: 0.01
+  cluster_gap_s: 8
+  cluster_similarity: 0.82
+ocr:
+  variant: S # For T/B, supply the corresponding official config AND checkpoint.
+  repository: vendor/OpenOCR
+  config: models/svtrv2-s/inference.yml
+  checkpoint: models/svtrv2-s/best.pth
+  use_gpu: auto # quoted "true" or "false" to force GPU or CPU
