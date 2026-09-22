@@ -103,7 +103,7 @@ def test_cli_query_does_not_load_ocr(tmp_path, monkeypatch):
 
 def test_failed_video_does_not_stop_queue(tmp_path, monkeypatch):
     config = tmp_path / "config.yaml"
-    config.write_text("{}")
+    config.write_text("pipeline: legacy_hud")
     with Store(tmp_path / "output") as store:
         for video_id in ("bad", "good"):
             store.upsert_video(

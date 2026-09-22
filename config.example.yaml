@@ -1,42 +1,19 @@
-# Paths are relative to this file. Copy to config.yaml and edit.
+# Validated detection contract. Paddle model loading follows in R04.
 output_dir: output
-sources: [] # YouTube channel /videos URLs, playlists, or individual video URLs
-query:
-  target_name: HumanWorm
-  aliases: []
-filters:
-  date_from: null # YYYY-MM-DD, inclusive
-  date_to: null
-  title_include: null # regular expression, case insensitive
-  title_exclude: null
-  min_duration_s: null
-  max_duration_s: null
-retain_downloads: true
-export_rows: true
-default_profile: default_tf2_720p
-profiles:
-  default_tf2_720p:
-    roi: {x: 0.52, y: 0.02, width: 0.47, height: 0.30}
-    row_count: 6
-    row_height: 0.145
-    row_step: 0.155
-    padding: {left: 8, right: 8, top: 2, bottom: 2}
-channels: {}
-# channels:
-#   UC_EXAMPLE: {profile: default_tf2_720p}
-scan:
-  fps: 1
-  batch_size: 32
-  upscale: 2
-  interpolation: bicubic
-  preprocessing: rgb # rgb, grayscale, or contrast
-  min_contrast: 4
-  min_edge_density: 0.01
-  cluster_gap_s: 8
-  cluster_similarity: 0.82
-ocr:
-  variant: S # For T/B, supply the corresponding official config AND checkpoint.
-  repository: vendor/OpenOCR
-  config: models/svtrv2-s/inference.yml
-  checkpoint: models/svtrv2-s/best.pth
-  use_gpu: auto # quoted "true" or "false" to force GPU or CPU
+sources: []
+pipeline: detection
+query: {target_name: HumanWorm, aliases: []}
+sampling: {fps: 1, chunk_seconds: 600, max_height: 720}
+detector: {backend: paddle, name: PP-OCRv6-small-det, weights: null, device: cpu,
+           batch_size: 1, confidence: 0.3, resize: native, limit_side_len: 960}
+recognizer: {backend: paddle, name: PP-OCRv6-small-rec, weights: null, device: cpu,
+             batch_size: 32}
+crops: {min_height: 6, duplicate_iou: 0.85, containment: 0.90, max_per_frame: 64,
+        padding: 2, confidence_floor: 0.1}
+clustering: {gap_s: 3, similarity: 0.82, center_distance: 0.05, motion_tolerance: 0.5}
+matching: {strong: 0.95, weak: 0.82, gap_s: 3, short_name_length: 4}
+acquisition: {attempts: 3, backoff_s: 2, max_backoff_s: 30, streams_per_host: 1,
+              overlap_s: 3, cache_ttl_s: 0}
+persistence: {commit_interval_s: 20, max_rows: 10000, max_bytes: 16777216,
+              wal_checkpoint_pages: 1000, wal_size_bytes: 67108864}
+evidence: {policy: representative, full_frames: false, max_candidates: 4, compact: true}

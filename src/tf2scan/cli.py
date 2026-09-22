@@ -83,6 +83,9 @@ def execute(args):
             print(f"Indexed {count} videos; {failed} failures")
             return int(bool(failed))
         if args.command == "scan":
+            config.effective_scan({"sampling": {"fps": args.fps}} if args.fps is not None else None)
+            if config.data["pipeline"] != "legacy_hud":
+                raise ValueError("Paddle runtime integration is R04; use explicit legacy_hud for the old scanner")
             if args.fps is not None:
                 positive(args.fps, "fps")
             if args.local:

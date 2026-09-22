@@ -18,6 +18,7 @@ def config(tmp_path):
     return Config(
         tmp_path / "config.yaml",
         {
+            "pipeline": "legacy_hud",
             "profiles": {"default_tf2_720p": profile},
             "output_dir": "output",
             "scan": {
