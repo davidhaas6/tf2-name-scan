@@ -1,7 +1,8 @@
-# Local Paddle scanner. Streaming/recovery and evidence compaction settings are reserved.
+# Local Paddle scanner with bounded streaming, recovery, and evidence compaction.
 output_dir: output
 sources: []
 pipeline: detection
+# Example search name: replace it, use `scan --name NAME`, or search later with `query --name NAME`.
 query: {target_name: HumanWorm, aliases: []}
 sampling: {fps: 1, chunk_seconds: 600, max_height: 720}
 detector: {backend: paddle, name: PP-OCRv6-small-det, weights: null, device: cpu,

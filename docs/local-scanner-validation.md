@@ -1,5 +1,9 @@
 # Working local scanner: R04, R05 and R08 core
 
+This page records validation at the local scanner milestone. Streaming and
+recovery were implemented afterward; see [current progress](refinement-progress.md)
+for the latest status and validation.
+
 Validated on 2026-09-26 with Windows x64, Python 3.10.11, PaddleOCR 3.7.0,
 PaddleX 3.7.2, PaddlePaddle 3.3.1 and NumPy 2.2.6. Both models ran on CPU,
 with MKL-DNN disabled and no PyTorch backend. Model construction and prediction
@@ -82,13 +86,14 @@ text/geometry/evidence as representative (earliest wins confidence ties).
 
 ## Boundaries and checks
 
-69 tests pass, including two real FFmpeg fixtures. Added tests cover filtering,
+At this milestone, 69 tests passed, including two real FFmpeg fixtures. Added tests cover filtering,
 polygon intersection, deterministic ties, Unicode/confidence, counters, motion,
 gap boundaries, same-frame association, representative evidence, Paddle order/
 cardinality/coordinate contracts, model identity and local CLI model lifetime.
 
-R06/R07 streaming, incremental transactions, retry reconstruction and cross-chunk
-reconciliation remain separate work. R09–R11 query promotion/report refinements
-and evidence compaction remain separate work. This scanner keeps each accepted
-crop and uses a whole-file transaction; it does not claim bounded persistence or
-incremental resume. The legacy HUD/OpenOCR path remains explicitly selectable.
+At this milestone, R06/R07 streaming, incremental transactions, retry
+reconstruction and cross-chunk reconciliation were still separate work. Those
+capabilities have since been implemented. R09–R11 query promotion, evidence
+compaction and report refinements have also been implemented; see
+[refinement progress](refinement-progress.md) for current validation. The legacy
+HUD/OpenOCR path remains explicitly selectable.

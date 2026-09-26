@@ -13,9 +13,9 @@ report provides timestamp links, evidence and review state.
 ```powershell
 uv sync --extra paddle --extra dev
 Copy-Item config.example.yaml config.yaml
-uv run tf2scan scan --local game.mp4
-uv run tf2scan query --name HumanWorm
-uv run tf2scan report --rows
+uv run tf2scan scan --local game.mp4 --name HumanWorm
+uv run tf2scan query --name AnotherPlayer
+uv run tf2scan report --text-clusters
 ```
 
 See the [high-level design](docs/high-level-design.md) and

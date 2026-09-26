@@ -11,9 +11,9 @@ Verified on Windows x64 / Python 3.10.11 / CPU. Install FFmpeg and FFprobe on PA
 ```powershell
 uv sync --extra paddle --extra dev
 Copy-Item config.example.yaml config.yaml
-uv run tf2scan scan --local "C:\videos\game.mp4"
+uv run tf2scan scan --local "C:\videos\game.mp4" --name AnotherPlayer
 uv run tf2scan query --name AnotherPlayer --alias HistoricalName
-uv run tf2scan report --rows
+uv run tf2scan report --text-clusters
 ```
 
 The optional `paddle` extra pins PaddleOCR 3.7.0, PaddleX 3.7.2 and
@@ -36,18 +36,31 @@ and [recognition](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/versi
 APIs. Run metadata records actual artifact hashes, runtime versions and preprocessing.
 
 `scan` retains useful text across the whole frame, clusters nearby observations,
-and then runs the configured query. `report --rows` exports all clusters to
-`rows.jsonl`. Each cluster keeps a crop for its highest-confidence representative;
-other observations may have no crop. Set `evidence.full_frames: true` to also
-retain sampled frames with accepted text. There is no evidence compaction yet.
+and then searches the configured name (the example config uses `HumanWorm`).
+`scan --name NAME` overrides that name for this run; `query --name NAME` searches
+the saved OCR text later without scanning again. A zero-candidate scan can still
+have many recognized text observations: it only means the selected name was not
+promoted as a hit. `0 failures` means the scan completed successfully. `Query 2`
+means database query ID 2, and the reported candidates are text clusters for
+review, not necessarily distinct kill events. Each query/scan regenerates
+`hits.jsonl` and `report/index.html` for its selected target; the underlying
+observations and earlier query records remain in SQLite.
+
+`report --text-clusters` exports the selected
+corpus to `text_clusters.jsonl` (schema version 2). `--rows` remains a deprecated
+alias that also writes `rows.jsonl`. Each cluster retains its representative crop;
+configured query candidates can retain up to `evidence.max_candidates` additional
+crops. Other observations have null crop paths after compaction. Set
+`evidence.full_frames: true` to retain representative sampled frames.
 
 Detection scans use bounded sections and commit frames at configured video-time,
 row, or memory limits. Interrupted scans resume their matching run and skip durable
 frames and completed chunks. A failed reprocess leaves the previous completed scan
 and its evidence available.
-The matching/report transition follows in R09-R11: query promotion still uses its
-legacy eight-second rule, while detection clustering uses three seconds. The
-evidence compaction and final report transition remain in R10/R11.
+Query promotion and detection clustering both use a three-second gap by default.
+Query settings are stored separately from the immutable scan configuration. Later
+SQLite-only queries can match observations whose own crops were compacted; the
+report labels the representative image with its actual timestamp and text.
 
 All commands accept `--config PATH`. Configured paths resolve relative to that YAML
 file; command-line local video paths resolve relative to the working directory.
@@ -97,7 +110,7 @@ use separate configs with each model's matching inference YAML and weights.
 uv run tf2scan calibrate "C:\videos\game.mp4" --timestamp 60
 uv run tf2scan scan --local "C:\videos\game.mp4"
 uv run tf2scan query --name AnotherPlayer --alias HistoricalName
-uv run tf2scan report --rows
+uv run tf2scan report --text-clusters
 ```
 
 Calibration saves the original frame and annotated ROI/row boxes. Adjust the
@@ -148,23 +161,30 @@ corpus, hits, owned evidence, and managed download, then refreshes exports.
 ## Corpus and review
 
 `output/results.sqlite3` is authoritative, with transactional schema migrations.
-Observations record all useful OCR strings, timestamps, row indices, confidence,
-and normalization/model/HUD provenance. Row clusters deduplicate similar text in
-neighboring rows within eight seconds, allowing notices to move down the feed.
-Separate notices in the same frame cannot merge. Similar repeated events can
-still merge; this is a retrieval heuristic, not exact death-event reconstruction.
+Detection observations retain useful OCR text, source polygons, frame timestamps,
+screen region and separate detector/OCR confidence. Motion-aware `text_clusters`
+link supporting observations across frames within a three-second gap; distinct
+detections in one frame cannot support the same cluster twice. Immutable
+`scan_runs` record effective model and preprocessing provenance, while
+`video_scans`, chunks and sampled frames trace each cluster to its source.
 
-Only the highest-confidence representative row crop and full frame per cluster
-are saved. Only the actual representative observation has a `crop_path`; other
-observations have null paths. Migrated ambiguous evidence remains explicitly marked
-in `legacy_evidence_path`. Immutable `scan_runs` contain effective configuration
-and model provenance; `video_scans`, chunks, frames and support links trace each
-text cluster to its source. Text variants remain available
-to subsequent queries. Report generation cleans up scanner-owned orphan images
-left by abruptly terminated scans.
-Blank OCR output is discarded; nonmatching and low-confidence nonempty text stays.
+Each detection cluster retains its actual representative observation crop.
+Configured query candidates may retain a bounded number of additional crops;
+other accepted observations keep their text and geometry with null crop paths.
+Optional full frames are retained for representative frames. Reports show a
+matched observation crop when available; otherwise they identify the cluster
+representative by its own text and timestamp and mark the matched crop unavailable.
+Scanner-owned orphan files are cleaned up after committed batches and reports.
+
+The explicit `legacy_hud` pipeline still uses its eight-second row tracker and
+row-index metadata. Migrated ambiguous evidence remains marked in
+`legacy_evidence_path` instead of being assigned to an observation without proof.
+Both pipelines remain queryable through the text-cluster lineage.
+
+Blank OCR output is discarded. Detection retention also applies the configured
+confidence floor and useful-text rule before storage.
 Query scores of at least 0.65 are retained in `query_matches` for borderline review.
-Hits require a score of 0.95, or two distinct frames within eight seconds at 0.82.
+Hits require a score of 0.95, or two distinct frames within three seconds at 0.82.
 
 `report/index.html` has sortable columns, crop/full-frame evidence and timestamp
 links. All displayed OCR and metadata is HTML-escaped. Review locally:
@@ -175,8 +195,10 @@ uv run tf2scan review 43 rejected
 ```
 
 Rerunning an unchanged query preserves reviews. `hits.jsonl` exports the selected
-query (or all queries with `report`). `report --rows` exports target-independent
-clusters to `rows.jsonl`. These files can be regenerated from SQLite without OCR.
+query (or all queries with `report`). `report --text-clusters` exports target-independent
+clusters to `text_clusters.jsonl`. Use `--scan-id` or `--run-id` for a historical
+corpus in `report`; Python `run_query` also accepts `scan_id` or `run_id` for
+historical rematching. These files can be regenerated from SQLite without OCR.
 No server, public API, VLM fallback, fine-tuning, or search-engine service is included.
 
 ## Validation and evaluation

@@ -1,19 +1,52 @@
 # Refinement implementation
 
-## Current milestone: working local scanner
+## Current milestone: search, evidence and reports complete
 
-R04, R05 and R08 core are implemented, with local detection CLI wiring.
+R01–R11 core are implemented. R04/R05/R08 provide the local detection scanner;
+R06/R07 add bounded local and remote chunks, incremental commits and resume.
 `uv sync --extra paddle` installs the verified CPU runtime. `scan --local` loads
 the specified PP-OCRv6-small models, filters proposals deterministically,
 recognizes useful Unicode text, and persists geometry/motion clusters and actual
-observation evidence. The prior R01–R03 notes below describe their historical
-boundaries; the detection CLI gate and singleton clustering have now been replaced.
+observation evidence. Completed chunks are skipped on resume, and a failed
+reprocess preserves the previous completed scan. The R01–R03 notes below describe
+their historical boundaries; their references to missing Paddle construction,
+singleton clustering and gated detection CLI scans no longer describe current code.
 
-Validation: 69 tests pass; real Paddle inference on two 12-second gameplay-video
-excerpts produced clustered text and evidence. See
-[local scanner validation](local-scanner-validation.md) for counts, inspected
-examples, exact package/model identities, policy and remaining scope.
-R06/R07 recovery and R09–R11 search/evidence/report refinements remain outstanding.
+Latest recorded validation: 79 tests pass, Ruff passes, and a real Paddle scan
+completed two six-second local chunks of `gameplay-smoke.mp4`. The earlier local
+scanner validation recorded 69 tests and real Paddle inference on two 12-second
+excerpts; see [local scanner validation](local-scanner-validation.md) for model
+identities and inspected examples. R09–R11 add three-second query promotion,
+sparse evidence retention/cleanup, and lineage-aware reports/exports. R12–R14
+(labeled video evaluation, end-to-end metrics, and remaining CLI/documentation)
+follow. R15 model comparisons are deferred. Live remote/model integration remains
+environment-dependent; the remote streaming path has deterministic mocked coverage.
+
+## R09–R11 — query, evidence and report transition
+
+The matcher uses three-second weak-score consensus and an identity containing its
+effective settings, so old reviews remain with their original query version.
+Queries score every supported observation in selected completed scans. Scanner
+batches retain the actual representative crop and bounded crops relevant to the
+configured query. Optional full-frame evidence is compacted to representative
+frames. Later queries can still rematch all OCR text; reports identify the matched
+observation and label representative fallback evidence with its own text and time.
+
+`text_clusters.jsonl` schema version 2 includes support observations, decoded
+polygons, scan/run IDs and run provenance. `hits.jsonl` includes matched and shown
+evidence provenance. `report --text-clusters` is the main export; `--rows` remains
+a compatibility alias. Reports can select historical scans/runs explicitly. Video
+deletion cascades through generations, preserves shared runs, and removes owned
+evidence only after the database delete commits.
+
+Validation: 79 tests pass and Ruff passes. Real-model accuracy remains an R12/R13
+evaluation task.
+
+## Historical milestone record: R01–R03
+
+The following sections record what was delivered and validated at each earlier
+milestone, including the later streaming/recovery entry. Forward-looking statements
+in those entries are historical; use the current milestone above for present status.
 
 ## R01 — effective configuration and contracts
 

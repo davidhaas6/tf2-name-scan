@@ -1,6 +1,6 @@
 # HLD refinement: implementation design and scope
 
-Status: R01?R03 implemented; remaining V1 delivery plan updated 2026-09-26.  
+Status: R01–R11 core implemented through lineage-aware search, sparse evidence and reports; R12–R13 and remaining R14 work are next. Updated 2026-09-26.
 Audit date: 2026-09-22.  
 Implementation baseline: `90f842e`; repository HEAD at audit: `605a562`.  
 Design changes: `666bc0a` (adaptive detection and lineage) and `605a562` (streaming MVP refinements).  
@@ -283,39 +283,40 @@ Preserve the intent of query-without-OCR, rematching without corpus mutation, re
 
 Add focused tests for geometry encoding/crop transforms, retention counters, configuration hashing, legacy migration, duplicate/reordered detection association, crash recovery, boundary merging and evidence compaction. Use real FFmpeg local fixtures for media timing; gate model/network integration tests explicitly on their required environment. Test source failure, early EOF, cancellation and subprocess cleanup rather than relying only on success-path mocks.
 
-When implementing, run `uv run pytest` and `uv run ruff check src tests` plus the relevant real-model/media smoke tests available in the environment. Record skipped integration checks and benchmark evidence separately. Run these checks for each remaining delivery commit. Completed foundation results are recorded in ?11; they are separate from real-model evaluation.
+When implementing, run `uv run pytest` and `uv run ruff check src tests` plus the relevant real-model/media smoke tests available in the environment. Record skipped integration checks and benchmark evidence separately. Run these checks for each remaining delivery commit. Completed milestone results are recorded in ?11; they are separate from real-model evaluation.
 
 ## 11. Delivery sequence and completion boundaries
 
-### Completed foundation: R01?R03
+### Completed milestones: R01–R08 core
 
 | Requirement | Commit | Delivered |
 |---|---|---|
 | R01 | `a5452e4` | Validated effective configuration, reproducibility identity and inference contracts; explicit legacy configuration path |
 | R02 | `cdcd500` | Immutable scan lineage, recoverable populated legacy migration, preserved history/reviews/evidence, latest-completed selection |
 | R03 | `d1c508c` | Full-frame detector interface and fake adapter, source-aware sampling, perspective rectification and local ingestion integration |
+| R04, R05, R08 core | `6a65872`, `c403e2f` | Specified Paddle detector/recognizer, deterministic filtering and retention, geometry/motion clustering and local CLI scanning |
+| R06, R07 integration | `b35d698` | Bounded local/remote chunks, incremental persistence, retry diagnostics, tracker restoration and completed-chunk resume |
 
-Foundation validation: **52 tests passed**, including real FFmpeg fixtures; Ruff passed. Original v1/v2 migration definitions and `high-level-design.md` remain unchanged. These results establish foundation correctness, not recognition accuracy or production throughput.
+Latest recorded validation: **79 tests passed** and Ruff passed for `src` and `tests`. A real Paddle scan completed two six-second local chunks of `gameplay-smoke.mp4` (12 sampled frames, 86 observations, 67 clusters) during R06/R07 validation; R09–R11 have deterministic tests but no new real-video accuracy measurement. The earlier R01–R03 foundation passed 52 tests, including real FFmpeg fixtures. Original v1/v2 migration definitions and `high-level-design.md` remain unchanged. These results establish implementation behavior, not measured production accuracy or throughput. Live remote/model integration remains environment-dependent; remote acquisition has deterministic mocked coverage. See [refinement-progress.md](refinement-progress.md) for details.
 
-The new scanner is **not yet usable end to end**. Paddle construction is missing, detection ingestion uses explicit singleton clusters, and bounded streaming/incremental recovery remain unfinished. Detection CLI scans currently stop before acquisition; the old scanner is available only through `pipeline: legacy_hud`. R05 retention limits and R08 motion tracking are not implied by their configuration contracts. See [refinement-progress.md](refinement-progress.md) for the precise implementation boundaries.
+The current scanner runs the Paddle models, filters and clusters detected text, commits bounded chunks incrementally, and resumes completed chunks. R09–R11 use three-second query promotion, compact evidence, and export lineage-aware hits and text clusters. Labeled video evaluation, end-to-end metrics, and remaining CLI/documentation work remain R12–R14. R15 model comparisons are deferred.
 
-### Next delivery commits
+### Remaining delivery sequence
 
-Prioritize a working, reliable, measurable Paddle V1. Group related requirements into the following commits so integration is tested at useful boundaries; the detailed acceptance criteria in ??3?10 still apply.
+The first three delivery groups below are complete at their stated core scope. The detailed acceptance criteria in §§3–10 still apply to the remaining work.
 
-| Commit | Scope | Completion check |
+| Delivery group | Scope | Completion check |
 |---|---|---|
-| 1. Working local scanner | **R04 + R05 + R08 core**, plus local CLI wiring from R14: Paddle detector/recognizer, deterministic proposal filtering/deduplication/caps, useful-text retention and counters, geometry/motion temporal clustering | A real local clip produces sensible clustered text and evidence using the specified models. Deterministic tests cover filtering, accounting and temporal/motion boundaries; actual model/runtime versions and weight hashes are recorded. |
-| 2. Streaming and recovery | **R06 + R07**, remaining R08 persistence/restoration and the R10 evidence consistency needed for safe recovery: bounded acquisition, chunk/sample ownership, incremental commits, retries/backoff, overlap deduplication and tracker restoration | Interrupt and resume local and remote scans without losing or duplicating observations. Test failures, overlap and process cleanup; failed reprocessing preserves the prior completed corpus and its evidence. |
-| 3. Complete search and review | **R09 + R10 + R11**, plus R14 query/report integration: three-second promotion, truthful representative evidence, retention/cleanup, lineage-aware reports and exports | Scan ? query ? report ? review works. Historical reviews survive reprocessing, new clusters do not inherit reviews, nullable evidence is truthful, and SQLite-only rematching needs no inference dependencies. |
+| 1. Working local scanner — complete | **R04 + R05 + R08 core**, plus local CLI wiring from R14: Paddle detector/recognizer, deterministic proposal filtering/deduplication/caps, useful-text retention and counters, geometry/motion temporal clustering | Real local clips produced clustered text and evidence with the specified models. Deterministic tests cover filtering, accounting and temporal/motion boundaries; model/runtime versions and weight hashes are recorded. |
+| 2. Streaming and recovery — complete | **R06 + R07**, R08 persistence/restoration and evidence consistency needed for safe recovery: bounded acquisition, chunk/sample ownership, incremental commits, retries/backoff, overlap deduplication and tracker restoration | A real Paddle scan completed two bounded local chunks; deterministic tests cover resume and remote acquisition. Live remote/model integration remains to be validated in an environment with network access. |
+| 3. Complete search and review — core complete | **R09 + R10 + R11**, with remaining R14 CLI/documentation polish: three-second promotion, truthful representative evidence, retention/cleanup, lineage-aware reports and exports | Scan → query → report → review works. Historical reviews survive reprocessing, new clusters do not inherit reviews, nullable evidence is truthful, and SQLite-only rematching needs no inference dependencies. |
 | 4. Evaluation and release readiness | **R12 + R13 + remaining R14**: annotated real-video fixtures, production-pipeline evaluation, uncertainty/performance reporting, CLI and documentation completion, regression coverage | Run the actual pipeline against labeled videos and report recall, false positives, reviewer workload, speed and remaining failures. Complete the CLI/migration documentation and all remaining V1 acceptance checks. |
 
-Each commit includes its supporting documentation and passes `uv run pytest`, `uv run ruff check src tests`, and the applicable real-model/media smoke tests before committing. This is a delivery grouping, not a fixed commit-count constraint or permission to omit acceptance checks. Split streaming and recovery into two commits if that makes each change independently testable and reviewable.
+Each remaining delivery group includes supporting documentation and passes `uv run pytest`, `uv run ruff check src tests`, and applicable real-model/media smoke tests before committing. These groups do not prescribe a fixed commit count or omit acceptance checks.
 
-### Start immediately alongside the local scanner
+### Evaluation work for the next phase
 
-- **Resolve the Paddle integration risk first:** verify the specified PP-OCRv6 detector/recognizer packages, artifacts and CPU/GPU support on the target machine, then run a real-model local smoke test before expanding infrastructure. Do not silently substitute models when an artifact or runtime is unavailable.
-- **Begin R12 data work during commit 1:** select the three roughly ten-minute VODs, establish source-separated splits, and start annotating about 100 visible username occurrences plus negative regions. Carry this work forward while streaming/reporting is built; do not postpone annotation until commit 4.
+- Select the three roughly ten-minute VODs, establish source-separated splits, and annotate about 100 visible username occurrences plus negative regions for R12.
 - Use failures from the local smoke test and early labeled samples to drive fixes. Keep inference behavior, geometry and provenance consistent between scanning and evaluation.
 
 ### V1 completion and excluded follow-up work
@@ -332,9 +333,9 @@ Specific uncertainties to resolve with evidence, without blocking unrelated work
 
 | Question | Owner / required evidence |
 |---|---|
-| Exact Paddle packages, model artifacts and CPU/GPU support | R04: install and smoke-test the intended detector/recognizer on the target platform; record versions and hashes |
-| yt-dlp section behavior, source PTS and raw frame dimensions | R06: real local/non-keyframe and bounded remote range fixtures; show source-time alignment and checked process completion |
-| Replay identity under detector jitter and range overhang | R07: deterministic sample ownership and retry equivalence tests, with documented geometry tolerance |
+| Exact Paddle packages, model artifacts and CPU/GPU support | R04 resolved for Windows x64 CPU: packages, model hashes and real-model smoke tests are recorded in [local scanner validation](local-scanner-validation.md). GPU support remains unvalidated. |
+| yt-dlp section behavior, source PTS and raw frame dimensions | R06/R07 implemented with local media and deterministic mocked remote tests; live remote/model integration remains environment-dependent. |
+| Replay identity under detector jitter and range overhang | R07 has deterministic sample ownership and retry/recovery coverage; retain geometry tolerance checks during end-to-end evaluation. |
 | Motion, confidence floor, padding and detector thresholds | R05/R08/R13: initial documented defaults, tune on source-separated labelled data |
 | Ambiguous legacy representative evidence | R02/R10: preserve marked unknowns and legacy paths; no fabricated per-observation provenance |
 | Evidence requested by arbitrary later aliases | R10: retain/show truthful cluster representatives; observation-specific recapture is separate from SQLite-only query |
