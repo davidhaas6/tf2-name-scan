@@ -24,10 +24,10 @@ def test_filters():
 
 def test_config_validation(tmp_path):
     config = tmp_path / "config.yaml"
-    config.write_text("scan: {fps: 0}")
+    config.write_text("sampling: {fps: 0}")
     with pytest.raises(ValueError, match="fps"):
         load_config(config)
-    config.write_text("scan: {fps: 2}\noutput_dir: elsewhere")
+    config.write_text("sampling: {fps: 2}\noutput_dir: elsewhere")
     assert load_config(config).root == tmp_path / "elsewhere"
 
 
@@ -66,7 +66,8 @@ def test_real_ffmpeg_streaming_and_failure(tmp_path):
     )
     frames = list(sample_frames(video))
     assert [t for t, _ in frames] == [0, 1]
-    assert frames[0][1].size == (1280, 720)
+    assert frames[0].image.size == (320, 180)
+    assert (frames[0].source_width, frames[0].source_height) == (320, 180)
     with pytest.raises(subprocess.CalledProcessError):
         list(sample_frames(tmp_path / "missing.mp4"))
 

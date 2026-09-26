@@ -27,13 +27,22 @@ def test_minimal_config_and_identity(tmp_path):
     assert config.effective_scan(adapters={"detector": meta})[1] != first
 
 
-@pytest.mark.parametrize("setting", [
-    "sampling: {fps: .nan}", "detector: {batch_size: 1.5}",
-    "crops: {padding: true}", "clustering: {similarity: 1.1}",
-    "persistence: {commit_interval_s: 9}", "acquisition: {overlap_s: 600}",
-    "acquisition: {streams_per_host: 2}", "matching: {weak: 0.99}",
-    "recognizer: {device: false}", "profiles: {}",
-])
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "sampling: {fps: .nan}",
+        "detector: {batch_size: 1.5}",
+        "crops: {padding: true}",
+        "clustering: {similarity: 1.1}",
+        "persistence: {commit_interval_s: 9}",
+        "acquisition: {overlap_s: 600}",
+        "acquisition: {streams_per_host: 2}",
+        "matching: {weak: 0.99}",
+        "recognizer: {device: false}",
+        "profiles: {}",
+        "scan: {fps: 2}",
+    ],
+)
 def test_invalid_config(tmp_path, setting):
     path = tmp_path / "config.yaml"
     path.write_text(setting)

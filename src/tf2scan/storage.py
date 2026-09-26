@@ -67,6 +67,10 @@ ALTER TABLE videos ADD COLUMN scan_config_json TEXT;
 
 
 MIGRATIONS.append(SCHEMA)
+MIGRATIONS.append("""
+ALTER TABLE observations ADD COLUMN detection_identity TEXT;
+ALTER TABLE observations ADD COLUMN crop_transform_json TEXT;
+""")
 
 
 class Store(LineageStore):

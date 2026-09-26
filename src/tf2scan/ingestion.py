@@ -5,12 +5,11 @@ import json
 import logging
 import time
 import uuid
-from contextlib import closing
 from pathlib import Path
 
 from .clustering import Cluster, RowTracker
 from .contracts import AdapterMetadata
-from .frames import sample_frames
+from .frames import frame_iterator, sample_frames
 from .hud import boxes, prepare, useful
 from .lineage import insert
 from .matching import NORMALIZATION_VERSION, compact, normalize
@@ -18,7 +17,26 @@ from .matching import NORMALIZATION_VERSION, compact, normalize
 log = logging.getLogger(__name__)
 
 
-def ingest(store, config, video, recognizer, fps=None, reprocess=False, frame_source=None):
+def ingest(
+    store, config, video, recognizer, fps=None, reprocess=False, frame_source=None, *, detector=None
+):
+    if config.data.get("pipeline", "detection") != "legacy_hud":
+        if detector is None:
+            raise ValueError(
+                "Full-frame ingestion requires a TextDetector adapter (Paddle factory: R04)"
+            )
+        from .detected_ingestion import ingest_detected
+
+        return ingest_detected(
+            store,
+            config,
+            video,
+            detector,
+            recognizer,
+            fps=fps,
+            reprocess=reprocess,
+            frame_source=frame_source,
+        )
     if (
         store.rows("SELECT id FROM selected_video_scans WHERE video_id=?", (video["id"],))
         and not reprocess
@@ -177,7 +195,7 @@ def ingest(store, config, video, recognizer, fps=None, reprocess=False, frame_so
                 else sample_frames(video["local_path"], settings["fps"])
             )
             sampled = 0
-            with closing(iter(source)) as frames:
+            with frame_iterator(source) as frames:
                 for timestamp, frame in frames:
                     sampled += 1
                     frame_ids[timestamp] = insert(

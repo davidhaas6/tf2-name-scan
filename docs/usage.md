@@ -17,6 +17,27 @@ uv run tf2scan --help
 All commands accept `--config PATH`. Configured paths resolve relative to that YAML
 file; command-line local video paths resolve relative to the working directory.
 
+## Legacy configuration
+
+For the commands below, use a separate legacy configuration (paths relative to it):
+
+```yaml
+pipeline: legacy_hud
+output_dir: output
+sources: []
+query: {target_name: HumanWorm}
+scan: {fps: 1, batch_size: 32}
+ocr:
+  repository: vendor/OpenOCR
+  config: models/svtrv2-s/inference.yml
+  checkpoint: models/svtrv2-s/best.pth
+  use_gpu: auto
+```
+
+Legacy HUD defaults are supplied only in this explicit mode. The new detection
+example uses `sampling`, `detector`, `recognizer` and `crops` settings; mixing old
+`scan`/HUD/OpenOCR sections into a detection config is rejected.
+
 ## OpenOCR setup
 
 Clone the [official OpenOCR repository](https://github.com/Topdu/OpenOCR) into
@@ -46,8 +67,10 @@ uv run tf2scan report --rows
 
 Calibration saves the original frame and annotated ROI/row boxes. Adjust the
 profile in YAML until rows contain complete notices. Calibration requires FFmpeg,
-but does not load OCR. Sampling scales to 720 pixels high and disables automatic
-rotation because TF2 gameplay is expected to be landscape footage.
+but does not load OCR. Sampling preserves dimensions up to 720 pixels high; larger
+inputs are reduced to a configurable working height while frame records retain
+source dimensions and the working-to-source scale. Automatic rotation is disabled
+because TF2 gameplay is expected to be landscape footage.
 
 `scan` ingests **all nonblank OCR rows**, then runs the configured query if present.
 `query` uses only SQLite and never instantiates OCR or opens video files. You can

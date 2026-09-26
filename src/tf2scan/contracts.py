@@ -30,6 +30,26 @@ class Frame:
     image: Image.Image
     chunk_id: int | None = None
 
+    def __post_init__(self):
+        import math
+
+        if not math.isfinite(self.timestamp_s) or self.timestamp_s < 0:
+            raise ValueError("Frame timestamp must be finite and nonnegative")
+        if any(
+            isinstance(v, bool) or not isinstance(v, int) or v <= 0
+            for v in (self.source_width, self.source_height)
+        ):
+            raise ValueError("Source dimensions must be positive integers")
+        if not self.sample_key:
+            raise ValueError("Frame sample identity is required")
+
+    def __iter__(self):
+        # Transitional timestamp/image unpacking for legacy scanner and calibration.
+        return iter((self.timestamp_s, self.image))
+
+    def __getitem__(self, index):
+        return (self.timestamp_s, self.image)[index]
+
     @property
     def working_to_source(self):
         return (self.source_width / self.image.width, self.source_height / self.image.height)

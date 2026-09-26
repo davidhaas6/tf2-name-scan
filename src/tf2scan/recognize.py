@@ -4,11 +4,15 @@ import hashlib
 import subprocess
 import sys
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Protocol
 
 import numpy as np
 from PIL import Image
+
+from .contracts import AdapterMetadata
 
 
 @dataclass(frozen=True)
@@ -19,6 +23,7 @@ class Recognition:
 
 class Recognizer(Protocol):
     model_version: str
+    metadata: AdapterMetadata
 
     def recognize(self, crops: list[Image.Image]) -> list[Recognition]: ...
 
@@ -84,6 +89,23 @@ class OpenOCRRecognizer:
         self.model_version = (
             f"OpenOCR:{version}:SVTRv2-{settings.get('variant', 'S')}:"
             f"config={file_hash(model_config)}:weights={file_hash(checkpoint)}"
+        )
+        dependencies = {}
+        for package in ("torch", "numpy", "Pillow"):
+            try:
+                dependencies[package] = package_version(package)
+            except PackageNotFoundError:
+                dependencies[package] = "unknown"
+        self.metadata = AdapterMetadata(
+            f"SVTRv2-{settings.get('variant', 'S')}",
+            self.model_version,
+            file_hash(checkpoint),
+            "torch",
+            dependencies,
+            {
+                "config_hash": file_hash(model_config),
+                "transforms": cfg["Eval"]["dataset"]["transforms"],
+            },
         )
         self.engine = OpenRecognizer(
             config=cfg, backend="torch", use_gpu=settings.get("use_gpu", "auto")

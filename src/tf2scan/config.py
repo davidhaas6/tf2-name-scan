@@ -49,7 +49,12 @@ class Config:
 
 
 def positive(value, label):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+    ):
         raise ValueError(f"{label} must be a finite positive number")
 
 
@@ -62,7 +67,9 @@ def load_config(path="config.yaml"):
     pipeline = data.setdefault("pipeline", "detection")
     if pipeline not in ("detection", "legacy_hud"):
         raise ValueError("pipeline must be detection or legacy_hud")
-    if pipeline != "legacy_hud" and any(key in data for key in ("profiles", "default_profile", "ocr")):
+    if pipeline != "legacy_hud" and any(
+        key in data for key in ("profiles", "default_profile", "ocr", "scan", "channels")
+    ):
         raise ValueError("Old HUD/OpenOCR configuration requires pipeline: legacy_hud")
     merge_settings(data)
     query_settings(data)
@@ -110,4 +117,6 @@ def load_config(path="config.yaml"):
         config.profile()
         for channel in data.get("channels", {}):
             config.profile(channel)
+    if pipeline == "detection":
+        data.pop("scan", None)
     return config

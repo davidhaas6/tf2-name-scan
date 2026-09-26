@@ -74,3 +74,58 @@ failure, historical export/search/review preservation, failed/latest selection,
 resume mismatch, geometry encoding, duplicate identities and cross-scan rejection.
 
 R02 validation result: 37 tests passed; Ruff passed, including the real FFmpeg fixture.
+
+
+## R03 ? full-frame detection and rectified crops
+
+`TextDetector.detect(list[Frame])` returns one ordered detection list per input
+frame, with unique detection identities within each frame and source-coordinate
+quadrilaterals. `FakeDetector` supplies deterministic scripted proposals. The
+`detector_input` / `to_source_detection` helpers implement native and 960 minimum
+side experiments with exact per-axis tensor-to-source mappings (including rounded
+resize dimensions). Both detector and recognizer result cardinality are checked.
+
+`sample_frames` now yields source-aware `Frame` records with source timestamp,
+sample identity, dimensions, working image and optional chunk owner. At or below
+720p the image stays native; larger inputs use an aspect-preserving 720-high
+working image by default. `max_height` is explicit and enters run configuration.
+No unconditional upscale remains. Transitional tuple unpacking/indexing supports
+legacy calibration and sampling callers. Decoder generators close on failure or
+cancellation, and ordinary iterable fixtures work too. Exact section ownership
+and PTS/retry reconciliation remain R06/R07.
+
+`crops.py` canonicalizes unordered convex quads, rejects nonfinite, degenerate,
+out-of-frame or undersized polygons, rectifies perspective at working-image
+pixel density, and samples configurable padding from surrounding source content.
+Outside-frame padding is white. Minimum text height is tested in source pixels,
+not the detector tensor or reduced working image. Every crop preserves its
+original detection identity and a homogeneous crop-to-source mapping. Region
+labels (`top_left` through `bottom_right`) and normalized bounding dimensions are
+geometry only. There are no ROI, contrast, edge, row-count or mandatory 2x gates.
+
+Call `ingest(..., detector=adapter)` with detection configuration and adapters
+that expose `AdapterMetadata` to exercise the local full-frame integration. It
+stores every sampled frame, even with zero/invalid proposals, and writes ordered
+recognitions, source geometry, transform metadata and support links into R02
+lineage. Migration v4 adds detection identity and crop transform columns without
+changing applied migrations. OpenOCR now exposes structured metadata when used in
+its explicit compatibility/comparison role.
+
+This is an integration foundation, not the complete V1 pipeline: detected
+observations receive singleton clusters with `close_reason=untracked-r03` and
+`clustering=singleton-r03` in run provenance. R05 implements proposal deduplication,
+recognition caps, confidence/Unicode retention and full accounting. Current
+counters accurately record this foundation's work (no dedup/cap drops); valid
+nonempty OCR is retained. R08 supplies temporal/motion tracking. R04 supplies
+Paddle factories, R06 bounded acquisition, R07 incremental persistence and R10
+evidence compaction. CLI detection inference remains gated before acquisition
+until the real factory exists. No real-model accuracy or performance claim is
+made by the deterministic tests.
+
+Tests cover skewed/rotated and reordered polygons, invalid/tiny boxes, source
+versus working height, padding at frame edges, transform corner round trips,
+960 resize mapping, spatial tags, batch ordering/cardinality, empty/rejected
+frames, persisted decoded geometry, scan failure isolation, and actual FFmpeg
+native 320x180 plus reduced 1920x1080 media.
+
+R03 validation result: 52 tests passed; Ruff and git diff --check passed. Both real FFmpeg fixtures ran. Original v1/v2 migration definitions and high-level-design.md were verified unchanged. Paddle model integration/smoke testing remains R04.

@@ -1,10 +1,26 @@
 """Bounded-memory FFmpeg sampling with checked process completion."""
 
 import json
+import math
 import subprocess
 import tempfile
+from contextlib import contextmanager
 
 from PIL import Image
+
+from .contracts import Frame
+
+
+@contextmanager
+def frame_iterator(source):
+    """Close decoder generators on errors/cancellation; also accept plain iterables."""
+    frames = iter(source)
+    try:
+        yield frames
+    finally:
+        close = getattr(frames, "close", None)
+        if close is not None:
+            close()
 
 
 def probe(path):
@@ -18,11 +34,19 @@ def probe(path):
     return stream, float(data.get("format", {}).get("duration", 0))
 
 
-def sample_frames(path, fps=1, start=0, limit=None):
-    if fps <= 0 or start < 0:
+def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=None):
+    if not math.isfinite(fps) or not math.isfinite(start) or fps <= 0 or start < 0:
         raise ValueError("fps must be positive and start nonnegative")
+    if isinstance(max_height, bool) or not isinstance(max_height, int) or max_height <= 0:
+        raise ValueError("max_height must be a positive integer")
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
+        raise ValueError("limit must be a positive integer")
     stream, _ = probe(path)
-    width = max(2, round(stream["width"] * 720 / stream["height"] / 2) * 2)
+    source_width, source_height = stream["width"], stream["height"]
+    if source_width <= 0 or source_height <= 0:
+        raise ValueError("Invalid video dimensions")
+    height = min(source_height, max_height)
+    width = max(1, round(source_width * height / source_height))
     command = [
         "ffmpeg",
         "-nostdin",
@@ -38,14 +62,14 @@ def sample_frames(path, fps=1, start=0, limit=None):
         "-an",
         "-sn",
         "-vf",
-        f"setpts=PTS-STARTPTS,fps={fps}:start_time=0,scale={width}:720",
+        f"setpts=PTS-STARTPTS,fps={fps}:start_time=0,scale={width}:{height}",
         "-pix_fmt",
         "rgb24",
         "-f",
         "rawvideo",
         "pipe:1",
     ]
-    size = width * 720 * 3
+    size = width * height * 3
     with tempfile.TemporaryFile() as errors:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors)
         completed = False
@@ -62,7 +86,15 @@ def sample_frames(path, fps=1, start=0, limit=None):
                     break
                 if len(data) != size:
                     raise RuntimeError("FFmpeg produced a truncated frame")
-                yield start + index / fps, Image.frombytes("RGB", (width, 720), bytes(data))
+                timestamp = start + index / fps
+                yield Frame(
+                    timestamp,
+                    f"{timestamp:.9f}",
+                    source_width,
+                    source_height,
+                    Image.frombytes("RGB", (width, height), bytes(data)),
+                    chunk_id,
+                )
                 index += 1
             if limit is None or index < limit:
                 code = process.wait()
