@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Resumable TF2 killfeed OCR corpus and username search"
 readme = "README.md"
 requires-python = ">=3.10.11"
-dependencies = ["Pillow>=10", "numpy>=1.26", "PyYAML>=6", "rapidfuzz>=3", "yt-dlp>=2025.1"]
+dependencies = ["Pillow>=10", "numpy>=1.26", "PyYAML>=6", "rapidfuzz>=3", "yt-dlp[default]>=2025.1"]
 
 [build-system]
 requires = ["hatchling"]

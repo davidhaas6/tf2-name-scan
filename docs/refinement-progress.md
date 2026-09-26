@@ -12,7 +12,7 @@ reprocess preserves the previous completed scan. The R01–R03 notes below descr
 their historical boundaries; their references to missing Paddle construction,
 singleton clustering and gated detection CLI scans no longer describe current code.
 
-Latest recorded validation: 79 tests pass, Ruff passes, and a real Paddle scan
+Latest recorded validation: 80 tests pass, Ruff passes, and a real Paddle scan
 completed two six-second local chunks of `gameplay-smoke.mp4`. The earlier local
 scanner validation recorded 69 tests and real Paddle inference on two 12-second
 excerpts; see [local scanner validation](local-scanner-validation.md) for model
@@ -39,8 +39,14 @@ a compatibility alias. Reports can select historical scans/runs explicitly. Vide
 deletion cascades through generations, preserves shared runs, and removes owned
 evidence only after the database delete commits.
 
-Validation: 79 tests pass and Ruff passes. Real-model accuracy remains an R12/R13
+Validation: 80 tests pass and Ruff passes. Real-model accuracy remains an R12/R13
 evaluation task.
+
+YouTube indexing and stream resolution now enable Node.js through yt-dlp's Python
+API and install the matching EJS scripts via the `yt-dlp[default]` dependency.
+Node 24.14.0 indexed both configured videos without the missing-runtime warning;
+the video-only stream for `ZiZmodw-yRc` resolved at 1280×720 and 25 seconds.
+Python 3.10 deprecation warnings remain separate from this runtime change.
 
 ## Historical milestone record: R01–R03
 

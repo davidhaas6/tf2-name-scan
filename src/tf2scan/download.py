@@ -1,13 +1,15 @@
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .ytdlp_options import with_node
+
 
 def resolve_stream(video):
     """Resolve a VOD to one video-only media URL without retaining a download."""
     from yt_dlp import YoutubeDL
 
-    with YoutubeDL({"format": "bestvideo[height<=720]/bestvideo", "noplaylist": True,
-                    "quiet": True, "skip_download": True, "retries": 2}) as ydl:
+    with YoutubeDL(with_node(format="bestvideo[height<=720]/bestvideo", noplaylist=True,
+                             quiet=True, skip_download=True, retries=2)) as ydl:
         info = ydl.extract_info(video["source_url"], download=False)
     if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
         raise ValueError("Live streams are unsupported; index a bounded VOD")
@@ -33,16 +35,16 @@ def download(store, video):
         raise FileNotFoundError(video["local_path"])
     folder = store.root / "downloads"
     folder.mkdir(parents=True, exist_ok=True)
-    options = {
-        "format": "bestvideo[height<=720]",
-        "noplaylist": True,
-        "outtmpl": str(folder / "%(id)s.%(ext)s"),
-        "download_archive": str(store.root / "download-archive.txt"),
-        "continuedl": True,
-        "retries": 3,
-        "fragment_retries": 3,
-        "quiet": True,
-    }
+    options = with_node(
+        format="bestvideo[height<=720]",
+        noplaylist=True,
+        outtmpl=str(folder / "%(id)s.%(ext)s"),
+        download_archive=str(store.root / "download-archive.txt"),
+        continuedl=True,
+        retries=3,
+        fragment_retries=3,
+        quiet=True,
+    )
     # Archive entries outlive retained files. Explicit reprocessing must be able to redownload.
     with YoutubeDL(options) as ydl:
         info = ydl.extract_info(video["source_url"], download=False)

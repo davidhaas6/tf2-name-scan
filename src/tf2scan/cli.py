@@ -14,6 +14,7 @@ from .query import run_query
 from .recognize import OpenOCRRecognizer
 from .report import export_report
 from .storage import Store
+from .ytdlp_options import with_node
 
 log = logging.getLogger(__name__)
 
@@ -216,7 +217,7 @@ def execute(args):
                     # yt-dlp canonicalizes short URLs; resolve the canonical ID.
                     from yt_dlp import YoutubeDL
 
-                    with YoutubeDL({"quiet": True, "noplaylist": True}) as ydl:
+                    with YoutubeDL(with_node(quiet=True, noplaylist=True)) as ydl:
                         video_id = ydl.extract_info(args.video, download=False)["id"]
                 else:
                     video_id = videos[0]["id"]

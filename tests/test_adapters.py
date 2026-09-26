@@ -1,11 +1,13 @@
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
 
 from tf2scan.cli import execute
-from tf2scan.download import cleanup_downloads, download
+from tf2scan.download import cleanup_downloads, download, resolve_stream
+from tf2scan.indexing import index_sources
 from tf2scan.recognize import OpenOCRRecognizer
 from tf2scan.storage import Store
 
@@ -34,6 +36,7 @@ def test_openocr_pil_and_bgr_input_contract():
 def test_archive_recovery_and_download_retention(tmp_path, monkeypatch):
     class YDL:
         def __init__(self, options):
+            assert options["js_runtimes"] == {"node": {}}
             self.options = options
             self.archive = {"youtube test"}
 
@@ -83,6 +86,36 @@ def test_archive_recovery_and_download_retention(tmp_path, monkeypatch):
         cleanup_downloads(store)
         assert not path.exists()
         assert local.exists()
+
+
+def test_index_and_stream_resolution_enable_node(tmp_path, monkeypatch):
+    url = "https://www.youtube.com/watch?v=ZiZmodw-yRc"
+    options_seen = []
+
+    class YDL:
+        def __init__(self, options):
+            options_seen.append(options)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def extract_info(self, source, download=False):
+            assert source == url and not download
+            return {
+                "id": "ZiZmodw-yRc", "webpage_url": url, "title": "test",
+                "duration": 15, "formats": [{"height": 720}],
+                "url": "https://media.example.com/video", "width": 1280, "height": 720,
+            }
+
+    monkeypatch.setattr("yt_dlp.YoutubeDL", YDL)
+    config = SimpleNamespace(data={"sources": [url], "pipeline": "detection"})
+    with Store(tmp_path) as store:
+        assert index_sources(store, config) == (1, 0)
+        assert resolve_stream(store.video("ZiZmodw-yRc"))[0] == "https://media.example.com/video"
+    assert all(options["js_runtimes"] == {"node": {}} for options in options_seen)
 
 
 def test_cli_query_does_not_load_ocr(tmp_path, monkeypatch):

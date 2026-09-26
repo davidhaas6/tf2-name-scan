@@ -140,6 +140,11 @@ and duration filters. Missing metadata needed by a filter causes a skip. Indexin
 again preserves completed scan state. Failed videos are retried by `--pending`.
 Detection scans resolve a video-only stream with yt-dlp and pass bounded sections
 to FFmpeg. They do not keep a full media download. A finite VOD duration is required.
+YouTube indexing and stream resolution enable Node.js through yt-dlp's Python
+equivalent of `--js-runtimes node`. Install Node.js 22 or newer on `PATH` and run
+`uv sync --extra paddle --extra dev`; the project's yt-dlp default extra installs
+the matching EJS challenge scripts. `tf2scan` does not accept yt-dlp's CLI flag.
+The separate Python 3.10 deprecation warning is unrelated to the JavaScript runtime.
 Legacy HUD scans still use managed whole-file downloads.
 
 Completed videos are skipped even if the current query or model configuration

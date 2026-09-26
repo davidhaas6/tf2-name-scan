@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from .frames import probe
+from .ytdlp_options import with_node
 
 log = logging.getLogger(__name__)
 
@@ -62,13 +63,13 @@ def index_sources(store, config, sources=None):
 
     failures = 0
     indexed = 0
-    options = {
-        "quiet": True,
-        "extract_flat": "in_playlist",
-        "skip_download": True,
-        "retries": 3,
-        "ignoreerrors": False,
-    }
+    options = with_node(
+        quiet=True,
+        extract_flat="in_playlist",
+        skip_download=True,
+        retries=3,
+        ignoreerrors=False,
+    )
     with YoutubeDL(options) as discovery, YoutubeDL({**options, "extract_flat": False}) as detail:
 
         def visit(info):
