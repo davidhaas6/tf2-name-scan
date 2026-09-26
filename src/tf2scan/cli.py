@@ -45,12 +45,18 @@ def parser():
             sub.add_argument("--fps", type=float)
             sub.add_argument("--chunk-seconds", type=float)
             sub.add_argument("--reprocess", action="store_true")
+            sub.add_argument("--name", help="Name to search after scanning; overrides query.target_name")
+            sub.add_argument("--alias", action="append", default=[])
         elif name == "query":
             sub.add_argument("--name")
             sub.add_argument("--alias", action="append", default=[])
         elif name == "report":
             sub.add_argument("--query-id", type=int)
             sub.add_argument("--rows", action="store_true")
+            sub.add_argument("--text-clusters", action="store_true")
+            selection = sub.add_mutually_exclusive_group()
+            selection.add_argument("--scan-id", type=int)
+            selection.add_argument("--run-id", type=int)
         elif name == "calibrate":
             sub.add_argument("video", help="Local path, indexed ID, or video URL")
             sub.add_argument("--timestamp", type=float, default=0)
@@ -73,7 +79,8 @@ def configured_query(store, config, name=None, aliases=None):
     target = name or query.get("target_name")
     if not target:
         return None
-    return run_query(store, target, aliases if name else query.get("aliases", []))
+    return run_query(store, target, aliases if name else query.get("aliases", []),
+                     matching=config.data.get("matching"))
 
 
 def execute(args):
@@ -84,6 +91,15 @@ def execute(args):
             print(f"Indexed {count} videos; {failed} failures")
             return int(bool(failed))
         if args.command == "scan":
+            name = getattr(args, "name", None)
+            aliases = getattr(args, "alias", [])
+            if name or aliases:
+                query = config.data.setdefault("query", {})
+                if name:
+                    query["target_name"] = name
+                    query["aliases"] = aliases
+                else:
+                    query["aliases"] = [*query.get("aliases", []), *aliases]
             sampling_overrides = {k: v for k, v in
                                   (("fps", args.fps),
                                    ("chunk_seconds", getattr(args, "chunk_seconds", None)))
@@ -154,18 +170,30 @@ def execute(args):
                 print(
                     f"{hit['video_id']} {hit['start_s']:.1f}s {hit['best_score']:.3f} {hit['best_text']}"
                 )
-            print(
-                f"{len(hits)} candidates; {failures} failures; {config.root / 'report/index.html'}"
-            )
+            target = config.data.get("query", {}).get("target_name")
+            selected_scans = store.selected_scan_ids()
+            cluster_count = len(store.selected_clusters())
+            print(f"Saved corpus: {cluster_count} text clusters across "
+                  f"{len(selected_scans)} completed video scans.")
+            if target:
+                print(f"Search target: {target!r}; {len(hits)} candidates. "
+                      "Try 'tf2scan query --name NAME' to search another name without rescanning.")
+            else:
+                print("No search target configured. Use 'tf2scan query --name NAME' "
+                      "to search the saved OCR text.")
+            print(f"{failures} failures; {config.root / 'report/index.html'}")
             return int(bool(failures))
         if args.command == "query":
             query_id = configured_query(store, config, args.name, args.alias)
             if query_id is None:
                 raise ValueError("Set query.target_name or pass --name")
             hits = export_report(store, query_id, config.data.get("export_rows", False))
-            print(f"Query {query_id}: {len(hits)} candidates; no OCR performed")
+            print(f"Query {query_id} for {args.name or config.data['query']['target_name']!r}: "
+                  f"{len(hits)} candidates; no OCR performed")
         elif args.command == "report":
-            hits = export_report(store, args.query_id, args.rows)
+            hits = export_report(store, args.query_id, args.rows,
+                                 text_clusters=args.text_clusters,
+                                 scan_id=args.scan_id, run_id=args.run_id)
             print(f"{len(hits)} candidates: {config.root / 'report/index.html'}")
         elif args.command == "review":
             with store.transaction() as db:

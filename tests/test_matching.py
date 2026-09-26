@@ -15,7 +15,8 @@ def test_unicode_and_separators_without_character_substitution():
 
 def test_consensus_requires_distinct_nearby_frames():
     assert promoted([(1, 0.96)])
-    assert promoted([(1, 0.85), (9, 0.84)])
+    assert promoted([(1, 0.85), (4, 0.84)])
+    assert not promoted([(1, 0.85), (9, 0.84)])
     assert not promoted([(1, 0.85), (1, 0.85)])
     assert not promoted([(1, 0.85), (10, 0.85)])
     assert not promoted([(1, 0.81), (2, 0.81)])

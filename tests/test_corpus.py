@@ -86,6 +86,8 @@ def test_rematch_uses_all_rows_and_preserves_corpus_and_reviews(config):
         with store.transaction() as db:
             db.execute("UPDATE hits SET review_status='confirmed' WHERE id=?", (hit["id"],))
         assert run_query(store, "OtherPlayer") == second
+        changed_settings = run_query(store, "OtherPlayer", matching={"gap_s": 2})
+        assert changed_settings != second
         assert (
             store.rows("SELECT * FROM hits WHERE id=?", (hit["id"],))[0]["review_status"]
             == "confirmed"
@@ -160,9 +162,12 @@ def test_blank_rows_discarded_but_borderline_retained(config):
             frame_source=frames([0, 1]),
         )
         assert len(store.rows("SELECT * FROM observations")) == 1
-        run_query(store, "abcdefghY")
+        query_id = run_query(store, "abcdefghY")
         assert not store.rows("SELECT * FROM hits")
         assert store.rows("SELECT * FROM query_matches")
+        assert export_report(store, query_id) == []
+        assert "No candidates for abcdefghY" in (
+            config.root / "report/index.html").read_text(encoding="utf-8")
 
 
 def test_export_has_provenance(config):

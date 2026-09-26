@@ -174,6 +174,20 @@ def test_scan_selection_resume_and_immutable_provenance(tmp_path):
         assert store.selected_scan_ids(run_id=1) == [first]
 
 
+def test_delete_video_keeps_shared_run_and_other_source(tmp_path):
+    with Store(tmp_path) as store:
+        for video_id in ("a", "b"):
+            store.upsert_video({"id": video_id, "title": video_id, "source_url": "url"})
+        scan_a = store.start_scan("a", "{}", "shared", legacy=True)
+        run_id = store.rows("SELECT scan_run_id FROM video_scans WHERE id=?", (scan_a,))[0]["scan_run_id"]
+        with store.transaction() as db:
+            insert(db, "video_scans", scan_run_id=run_id, video_id="b", status="completed")
+        store.delete_video("a")
+        assert store.video("b")["title"] == "b"
+        assert store.rows("SELECT id FROM scan_runs WHERE id=?", (run_id,))
+        assert len(store.rows("SELECT id FROM video_scans WHERE scan_run_id=?", (run_id,))) == 1
+
+
 def test_geometry_codec():
     polygon = ((1, 2), (11, 2), (11, 8), (1, 8))
     encoded = encode_polygon(polygon)

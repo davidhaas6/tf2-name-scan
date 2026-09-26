@@ -180,23 +180,72 @@ class Store(LineageStore):
             "(SELECT id FROM video_scans WHERE video_id=?)",
             (video_id,) * 5,
         )
-        for row in paths:
-            for value in row.values():
-                if value:
-                    path = (self.root / value).resolve()
-                    if path.is_relative_to(self.root.resolve()):
-                        path.unlink(missing_ok=True)
+        # Commit the cascade first. A failed delete must never remove live evidence.
+        with self.db:
+            self.db.execute("DELETE FROM videos WHERE id=?", (video_id,))
+            self.db.execute("DELETE FROM scan_runs WHERE id NOT IN "
+                            "(SELECT scan_run_id FROM video_scans)")
         if video["managed_download"] and video["local_path"]:
             path = Path(video["local_path"]).resolve()
             if path.is_relative_to((self.root / "downloads").resolve()):
                 path.unlink(missing_ok=True)
-        with self.db:
-            self.db.execute("DELETE FROM videos WHERE id=?", (video_id,))
+        referenced = {
+            (self.root / row[0]).resolve()
+            for row in self.db.execute(
+                "SELECT evidence_path FROM text_clusters UNION SELECT frame_path FROM text_clusters "
+                "UNION SELECT crop_path FROM observations UNION SELECT legacy_evidence_path FROM observations "
+                "UNION SELECT full_frame_path FROM sampled_frames")
+            if row[0]
+        }
+        assets = (self.root / "report/assets").resolve()
+        for row in paths:
+            for value in row.values():
+                if value:
+                    path = (self.root / value).resolve()
+                    if (assets.is_relative_to(self.root.resolve())
+                            and path.is_relative_to(assets)
+                            and path not in referenced):
+                        path.unlink(missing_ok=True)
+        self.prune_orphan_evidence()
+
+    def compact_evidence(self, scan_id, max_candidates=4, aliases=()):
+        """Keep actual representative and bounded query-relevant observation crops."""
+        from .matching import alias_score
+
+        clusters = self.rows("SELECT id,representative_observation_id FROM text_clusters "
+                             "WHERE video_scan_id=?", (scan_id,))
+        keep = set()
+        for cluster in clusters:
+            keep.add(cluster["representative_observation_id"])
+            if aliases:
+                observations = self.rows(
+                    "SELECT o.id,o.raw_text,o.crop_path FROM observations o "
+                    "JOIN cluster_observations co ON co.observation_id=o.id "
+                    "WHERE co.cluster_id=?", (cluster["id"],))
+                ranked = sorted(
+                    ((max(alias_score(o["raw_text"], a) for a in aliases), o["id"])
+                     for o in observations if o["crop_path"]
+                     and o["id"] != cluster["representative_observation_id"]),
+                    key=lambda item: (-item[0], item[1]))
+                keep.update(identity for score, identity in ranked[:max_candidates] if score >= 0.65)
+        discard = self.rows(
+            "SELECT id,crop_path FROM observations WHERE video_scan_id=? AND crop_path IS NOT NULL",
+            (scan_id,))
+        with self.transaction() as db:
+            for row in discard:
+                if row["id"] not in keep:
+                    db.execute("UPDATE observations SET crop_path=NULL WHERE id=?", (row["id"],))
+            db.execute(
+                """UPDATE sampled_frames SET full_frame_path=NULL WHERE video_scan_id=?
+                AND id NOT IN (SELECT o.sampled_frame_id FROM observations o
+                JOIN text_clusters c ON c.representative_observation_id=o.id
+                WHERE c.video_scan_id=?)""", (scan_id, scan_id))
+        self.prune_orphan_evidence()
 
     def prune_orphan_evidence(self):
         """Recover files left by a killed process; only touch scanner-owned names.
 
-        Call after committed ingestion/reporting, never during an active scan.
+        Call after a committed batch or report, never while a batch is writing files.
         The output directory supports a single writer, as documented.
         """
         assets = (self.root / "report/assets").resolve()

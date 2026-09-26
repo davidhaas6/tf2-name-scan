@@ -6,6 +6,7 @@ import pytest
 from PIL import Image
 
 from tf2scan.benchmark import benchmark
+from tf2scan.cli import parser
 from tf2scan.config import load_config
 from tf2scan.frames import sample_frames
 from tf2scan.indexing import rejection
@@ -29,6 +30,11 @@ def test_config_validation(tmp_path):
         load_config(config)
     config.write_text("sampling: {fps: 2}\noutput_dir: elsewhere")
     assert load_config(config).root == tmp_path / "elsewhere"
+
+
+def test_scan_accepts_explicit_query_target():
+    args = parser().parse_args(["scan", "--local", "game.mp4", "--name", "eggo"])
+    assert args.name == "eggo"
 
 
 def test_idempotent_index_and_migrations(tmp_path):

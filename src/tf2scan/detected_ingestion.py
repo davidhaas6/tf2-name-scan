@@ -15,7 +15,7 @@ from .download import resolve_stream
 from .frames import frame_iterator, probe, sample_frames
 from .geometry import encode_polygon, geometry_key
 from .lineage import insert
-from .matching import NORMALIZATION_VERSION, compact, normalize
+from .matching import NORMALIZATION_VERSION, alias_score, compact, normalize
 from .retention import select_crops, useful_text
 from .settings import merge_settings
 
@@ -61,7 +61,8 @@ def _save_image(image, path, **options):
         temporary.unlink(missing_ok=True)
 
 
-def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries, recognizer, settings):
+def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
+                  recognizer, settings, aliases=()):
     """Inference finishes before entering a write transaction; watermark commits last."""
     with store.transaction() as db:
         for frame, raw_count, duplicates, capped, recognition_count, accepted in entries:
@@ -120,7 +121,8 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries, 
                 else:
                     representative = True
                 crop_path = None
-                if representative:
+                candidate = any(alias_score(result.text, alias) >= 0.65 for alias in aliases)
+                if representative or candidate:
                     crop_path = (folder / f"{observation}-row.png").as_posix()
                     _save_image(crop.image, store.root / crop_path)
                     db.execute("UPDATE observations SET crop_path=? WHERE id=?",
@@ -155,6 +157,8 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries, 
                        cluster_id=cluster, observation_id=observation, support_score=score)
             db.execute("UPDATE scan_chunks SET last_processed_timestamp_s=? WHERE id=?",
                        (frame.timestamp_s, chunk_id))
+    if settings["evidence"]["compact"]:
+        store.compact_evidence(scan_id, settings["evidence"]["max_candidates"], aliases)
 
 
 def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
@@ -210,6 +214,8 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
         raise
     folder = Path("report/assets") / (
         hashlib.sha256(video["id"].encode()).hexdigest()[:16] + "-" + uuid.uuid4().hex)
+    query = config.data.get("query", {})
+    aliases = [query["target_name"], *query.get("aliases", [])] if query.get("target_name") else []
     store.prune_orphan_evidence()
     tracker = TextTracker.restore(settings["clustering"], store, scan_id)
     source_used = False
@@ -270,11 +276,11 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
                                         or len(pending) >= limits["max_rows"]
                                         or pending_bytes >= limits["max_bytes"]):
                                     _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
-                                                  tracker, pending, recognizer, settings)
+                                                  tracker, pending, recognizer, settings, aliases)
                                     pending, pending_bytes, first_time = [], 0, None
                     if pending:
                         _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
-                                      tracker, pending, recognizer, settings)
+                                      tracker, pending, recognizer, settings, aliases)
                     if not seen and not store.rows("SELECT id FROM sampled_frames WHERE scan_chunk_id=? LIMIT 1",
                                                    (chunk["id"],)):
                         raise RuntimeError("No video frames decoded")
@@ -310,7 +316,10 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
             db.execute("UPDATE videos SET status='scanned',error=NULL,scanned_at=CURRENT_TIMESTAMP "
                        "WHERE id=?", (video["id"],))
         store.finish_scan(scan_id)
-        store.prune_orphan_evidence()
+        if settings["evidence"]["compact"]:
+            store.compact_evidence(scan_id, settings["evidence"]["max_candidates"], aliases)
+        else:
+            store.prune_orphan_evidence()
     except BaseException as exc:
         store.finish_scan(scan_id, str(exc))
         raise
