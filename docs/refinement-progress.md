@@ -1,5 +1,20 @@
 # Refinement implementation
 
+## Current milestone: working local scanner
+
+R04, R05 and R08 core are implemented, with local detection CLI wiring.
+`uv sync --extra paddle` installs the verified CPU runtime. `scan --local` loads
+the specified PP-OCRv6-small models, filters proposals deterministically,
+recognizes useful Unicode text, and persists geometry/motion clusters and actual
+observation evidence. The prior R01–R03 notes below describe their historical
+boundaries; the detection CLI gate and singleton clustering have now been replaced.
+
+Validation: 69 tests pass; real Paddle inference on two 12-second gameplay-video
+excerpts produced clustered text and evidence. See
+[local scanner validation](local-scanner-validation.md) for counts, inspected
+examples, exact package/model identities, policy and remaining scope.
+R06/R07 recovery and R09–R11 search/evidence/report refinements remain outstanding.
+
 ## R01 — effective configuration and contracts
 
 `config.example.yaml` describes the detection pipeline without a HUD or OpenOCR

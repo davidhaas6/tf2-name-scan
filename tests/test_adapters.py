@@ -111,7 +111,7 @@ def test_failed_video_does_not_stop_queue(tmp_path, monkeypatch):
             )
     visited = []
 
-    def fake_ingest(store, config, video, *args):
+    def fake_ingest(store, config, video, *args, **kwargs):
         visited.append(video["id"])
         if video["id"] == "bad":
             raise RuntimeError("decoder failed")

@@ -1,18 +1,51 @@
 # Running the scanner
 
-The default configuration now describes full-frame detection. Paddle loading is
-R04; CLI detection scans currently fail before media acquisition. The OpenOCR
-scan/calibration commands below are the explicit `pipeline: legacy_hud`
-compatibility workflow. Query/report/index commands need no inference setup.
-See [implementation status](refinement-progress.md) for the package boundaries.
+The default pipeline scans local files with PP-OCRv6-small detection and
+recognition. No HUD profile or calibration is needed. Query/report/index commands
+need no inference setup. See [implementation status](refinement-progress.md).
 
-Install Python 3.10.11 or newer, FFmpeg and FFprobe on PATH, then run:
+## Local Paddle scanner
+
+Verified on Windows x64 / Python 3.10.11 / CPU. Install FFmpeg and FFprobe on PATH:
 
 ```powershell
-uv sync --extra dev
+uv sync --extra paddle --extra dev
 Copy-Item config.example.yaml config.yaml
-uv run tf2scan --help
+uv run tf2scan scan --local "C:\videos\game.mp4"
+uv run tf2scan query --name AnotherPlayer --alias HistoricalName
+uv run tf2scan report --rows
 ```
+
+The optional `paddle` extra pins PaddleOCR 3.7.0, PaddleX 3.7.2 and
+PaddlePaddle 3.3.1. Other platforms/Python versions need compatible upstream
+wheels; GPU installation has not been validated here. Both adapters must use the
+same device. The default runtime does not load PyTorch.
+
+On first use, Paddle downloads the two official models under `models/paddlex/`
+beside the config (or `PADDLE_PDX_CACHE_HOME` if set). For offline use, set
+`detector.weights` and `recognizer.weights` to the extracted inference directories
+containing `inference.json`, `inference.pdiparams` and `inference.yml`. To skip
+Paddle's host connectivity probe for cached/local models, set
+`PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True`. If Hugging Face is unavailable,
+`PADDLE_PDX_MODEL_SOURCE=BOS` selects Paddle's official mirror.
+
+The adapter explicitly maps design names `PP-OCRv6-small-det/rec` to official
+`PP-OCRv6_small_det/rec` IDs. See the upstream
+[detection](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/module_usage/text_detection.en.md)
+and [recognition](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/module_usage/text_recognition.en.md)
+APIs. Run metadata records actual artifact hashes, runtime versions and preprocessing.
+
+`scan` retains useful text across the whole frame, clusters nearby observations,
+and then runs the configured query. `report --rows` exports all clusters to
+`rows.jsonl`. Each retained observation has its own crop; the cluster points to
+its highest-confidence representative. Set `evidence.full_frames: true` to also
+retain sampled frames with accepted text. There is no evidence compaction yet.
+
+This milestone processes a local file in one transaction. Remote streaming,
+incremental resume, bounded persistence and chunk reconciliation follow in R06/R07.
+The matching/report transition follows in R09-R11: query promotion still uses its
+legacy eight-second rule, while detection clustering uses three seconds. The
+reserved acquisition/persistence settings do not yet change local execution.
 
 All commands accept `--config PATH`. Configured paths resolve relative to that YAML
 file; command-line local video paths resolve relative to the working directory.
@@ -56,7 +89,7 @@ mobile/Chinese model. The model version records the repository commit (or source
 hash), config hash, checkpoint hash, and declared variant. For T/B comparisons,
 use separate configs with each model's matching inference YAML and weights.
 
-## Local vertical slice and calibration
+## Legacy local scanning and calibration
 
 ```powershell
 uv run tf2scan calibrate "C:\videos\game.mp4" --timestamp 60

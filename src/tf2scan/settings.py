@@ -187,10 +187,11 @@ def effective_scan(config, overrides=None, adapters=None):
         "pipeline": config.data.get("pipeline", "detection"),
         "versions": {
             "preprocessing": "rectified-v1",
+            "retention": "polygon-unicode-v1",
             "geometry": "quad-f32le-v1",
             "normalization": NORMALIZATION_VERSION,
             "clustering": (
-                "legacy-row-v1" if config.data.get("pipeline") == "legacy_hud" else "singleton-r03"
+                "legacy-row-v1" if config.data.get("pipeline") == "legacy_hud" else "geometry-motion-v1"
             ),
         },
         "adapters": {key: value.to_dict() for key, value in (adapters or {}).items()},

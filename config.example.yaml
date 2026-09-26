@@ -1,4 +1,4 @@
-# Validated detection contract. Paddle model loading follows in R04.
+# Local Paddle scanner. Streaming/recovery and evidence compaction settings are reserved.
 output_dir: output
 sources: []
 pipeline: detection

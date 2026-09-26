@@ -29,6 +29,21 @@ class Recognizer(Protocol):
 
 
 def file_hash(path):
+    path = Path(path)
+    if path.is_dir():
+        files = sorted(
+            p
+            for p in path.rglob("*")
+            if p.is_file() and p.suffix in {".json", ".yml", ".yaml", ".pdiparams", ".pdmodel"}
+        )
+        if not files:
+            raise ValueError(f"No model artifacts in {path}")
+        digest = hashlib.sha256()
+        for item in files:
+            digest.update(item.relative_to(path).as_posix().encode())
+            digest.update(b"\0")
+            digest.update(file_hash(item).encode())
+        return digest.hexdigest()
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):

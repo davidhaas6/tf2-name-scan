@@ -154,10 +154,10 @@ def test_full_frame_ingestion_lineage_and_empty_frames(tmp_path):
         assert [f["raw_detection_count"] for f in frames] == [2, 0, 1]
         assert [f["recognition_count"] for f in frames] == [2, 0, 0]
         observations = store.rows("SELECT * FROM observations ORDER BY id")
-        assert [o["detection_identity"] for o in observations] == ["right", "left"]
+        assert [o["detection_identity"] for o in observations] == ["left", "right"]
         assert observations[0]["raw_text"] == "Player1"
-        assert decode_polygon(observations[0]["polygon_blob"]) == box(x=220).polygon
-        assert observations[0]["screen_region"] == "top_right"
+        assert decode_polygon(observations[0]["polygon_blob"]) == box(x=0).polygon
+        assert observations[0]["screen_region"] == "top_left"
         assert json.loads(observations[0]["crop_transform_json"])
         assert all((config.root / o["crop_path"]).exists() for o in observations)
         assert not store.rows("PRAGMA foreign_key_check")

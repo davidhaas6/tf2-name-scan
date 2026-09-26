@@ -1,19 +1,18 @@
 # TF2 name scan
 
-A local, resumable CLI that builds a reusable TF2 killfeed OCR corpus, then searches
+A local CLI that builds a reusable TF2 text OCR corpus, then searches
 it for a username and aliases. Changing targets reruns matching only—no downloads,
 frame decoding, or OCR.
 
 Start with [setup and CLI usage](docs/usage.md), copy `config.example.yaml`, and
 see [implementation status](docs/refinement-progress.md). The example config uses
-full-frame detection contracts; Paddle runtime loading follows in R04. The
-OpenOCR scan commands below require `pipeline: legacy_hud` and configured weights. Python, FFmpeg and FFprobe
-are required. SQLite stores corpus data and derived query hits; a static HTML
+full-frame Paddle detection and recognition for local files. The verified runtime
+uses Python 3.10.11; FFmpeg and FFprobe are required. SQLite stores corpus data and derived query hits; a static HTML
 report provides timestamp links, evidence and review state.
 
 ```powershell
-uv sync --extra dev
-uv run tf2scan calibrate game.mp4 --timestamp 60
+uv sync --extra paddle --extra dev
+Copy-Item config.example.yaml config.yaml
 uv run tf2scan scan --local game.mp4
 uv run tf2scan query --name HumanWorm
 uv run tf2scan report --rows

@@ -14,6 +14,7 @@ build-backend = "hatchling.build"
 tf2scan = "tf2scan.cli:main"
 
 [project.optional-dependencies]
+paddle = ["paddleocr==3.7.0", "paddlex[ocr]==3.7.2", "paddlepaddle==3.3.1"]
 dev = ["pytest>=8", "ruff>=0.9"]
 
 [tool.hatch.build.targets.wheel]

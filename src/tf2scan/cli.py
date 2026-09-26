@@ -1,7 +1,7 @@
 import argparse
 import logging
 import sys
-from contextlib import closing
+from contextlib import ExitStack, closing
 from pathlib import Path
 
 from .config import load_config, positive
@@ -77,15 +77,13 @@ def configured_query(store, config, name=None, aliases=None):
 
 def execute(args):
     config = load_config(getattr(args, "config_path", None) or args.config)
-    with Store(config.root) as store:
+    with Store(config.root) as store, ExitStack() as models:
         if args.command == "index":
             count, failed = index_sources(store, config)
             print(f"Indexed {count} videos; {failed} failures")
             return int(bool(failed))
         if args.command == "scan":
             config.effective_scan({"sampling": {"fps": args.fps}} if args.fps is not None else None)
-            if config.data["pipeline"] != "legacy_hud":
-                raise ValueError("Paddle runtime integration is R04; use explicit legacy_hud for the old scanner")
             if args.fps is not None:
                 positive(args.fps, "fps")
             if args.local:
@@ -97,6 +95,7 @@ def execute(args):
                     "SELECT * FROM videos WHERE status IN ('pending','downloaded','failed') ORDER BY id"
                 )
             recognizer = None
+            detector = None
             failures = 0
             for video in queue:
                 if video["status"] == "scanned" and not args.reprocess:
@@ -105,15 +104,34 @@ def execute(args):
                     )
                     continue
                 try:
+                    if config.data["pipeline"] != "legacy_hud" and (
+                        not video["local_path"] or not Path(video["local_path"]).is_file()
+                    ):
+                        raise ValueError("Detection scans currently require a local file; use --local")
                     if args.profile:
                         config.profile(override=args.profile)
                         video["hud_profile"] = args.profile
                     # Check model setup before initiating downloads.
                     if recognizer is None:
-                        recognizer = OpenOCRRecognizer(config)
+                        if config.data["pipeline"] == "legacy_hud":
+                            recognizer = OpenOCRRecognizer(config)
+                        else:
+                            from .paddle_backend import create_models
+
+                            detector, recognizer = create_models(config)
+                            models.callback(detector.close)
+                            models.callback(recognizer.close)
                     path = download(store, video)
                     video["local_path"] = str(path)
-                    ingest(store, config, video, recognizer, args.fps, args.reprocess)
+                    ingest(
+                        store,
+                        config,
+                        video,
+                        recognizer,
+                        args.fps,
+                        args.reprocess,
+                        detector=detector,
+                    )
                 except Exception as exc:
                     failures += 1
                     # A failed replacement must leave the old completed corpus usable.

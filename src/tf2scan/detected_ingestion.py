@@ -1,4 +1,4 @@
-"""Local detector/crop integration; production retention/tracking follow in R05/R08."""
+"""Local full-frame Paddle pipeline with deterministic retention and tracking."""
 
 import hashlib
 import json
@@ -6,31 +6,25 @@ import uuid
 from itertools import islice
 from pathlib import Path
 
+from .clustering import TextTracker
 from .contracts import Frame
-from .crops import geometry_metadata, prepare_crop
+from .crops import geometry_metadata
 from .detection import detect_frames
 from .frames import frame_iterator, sample_frames
 from .geometry import encode_polygon, geometry_key
 from .lineage import insert
 from .matching import NORMALIZATION_VERSION, compact, normalize
+from .retention import select_crops, useful_text
 from .settings import merge_settings
 
 
 def recognize_frame(frame, detections, recognizer, settings):
     """Preserve detection/result association across invalid crops and OCR batches."""
-    prepared = []
-    for detection in detections:
-        try:
-            prepared.append(
-                prepare_crop(
-                    frame,
-                    detection,
-                    min_height=settings["crops"]["min_height"],
-                    padding=settings["crops"]["padding"],
-                )
-            )
-        except ValueError:
-            continue
+    prepared, _, _ = select_crops(frame, detections, settings)
+    return recognize_crops(prepared, recognizer, settings)
+
+
+def recognize_crops(prepared, recognizer, settings):
     results = []
     size = settings["recognizer"]["batch_size"]
     for start in range(0, len(prepared), size):
@@ -83,6 +77,7 @@ def ingest_detected(
             chunk_id=chunk,
         )
     )
+    tracker = TextTracker(settings["clustering"])
     attempt = store.record_attempt(chunk)
     try:
         with store.transaction() as db, frame_iterator(source) as frames:
@@ -95,9 +90,12 @@ def ingest_detected(
                     if frame.chunk_id not in (None, chunk):
                         raise ValueError("Frame belongs to another chunk")
                     count += 1
-                    recognized = recognize_frame(frame, detections, recognizer, settings)
+                    prepared, duplicates, capped = select_crops(frame, detections, settings)
+                    recognized = recognize_crops(prepared, recognizer, settings)
                     accepted = [
-                        (crop, result) for crop, result in recognized if normalize(result.text)
+                        (crop, result)
+                        for crop, result in recognized
+                        if useful_text(result, settings["crops"]["confidence_floor"])
                     ]
                     frame_id = insert(
                         db,
@@ -111,10 +109,10 @@ def ingest_detected(
                         working_width=frame.image.width,
                         working_height=frame.image.height,
                         raw_detection_count=len(detections),
-                        duplicate_detection_count=0,
+                        duplicate_detection_count=duplicates,
                         recognition_count=len(recognized),
                         accepted_observation_count=len(accepted),
-                        cap_dropped_count=0,
+                        cap_dropped_count=capped,
                     )
                     db.execute(
                         "UPDATE video_scans SET input_width=?,input_height=? WHERE id=?",
@@ -128,7 +126,12 @@ def ingest_detected(
                             "UPDATE sampled_frames SET full_frame_path=? WHERE id=?",
                             (frame_path, frame_id),
                         )
-                    for crop, result in accepted:
+                    matches, closed = tracker.associate(frame, accepted)
+                    for identity, reason in closed.items():
+                        db.execute(
+                            "UPDATE text_clusters SET close_reason=? WHERE id=?", (reason, identity)
+                        )
+                    for index, (crop, result) in enumerate(accepted):
                         detection = crop.detection
                         polygon = encode_polygon(detection.polygon)
                         region, width, height = geometry_metadata(
@@ -158,28 +161,65 @@ def ingest_detected(
                             "UPDATE observations SET crop_path=? WHERE id=?",
                             (crop_path, observation),
                         )
-                        # Singleton clusters are explicit scaffolding, never fake motion continuity.
-                        cluster = insert(
-                            db,
-                            "text_clusters",
-                            video_scan_id=scan_id,
-                            video_id=video["id"],
-                            start_s=frame.timestamp_s,
-                            end_s=frame.timestamp_s,
-                            representative_observation_id=observation,
-                            representative_polygon_blob=polygon,
-                            screen_region=region,
-                            canonical_text=result.text,
-                            normalized_text=normalize(result.text),
-                            compact_text=compact(result.text),
-                            best_confidence=result.confidence,
-                            support_count=1,
-                            close_reason="untracked-r03",
-                            model_version=recognizer.metadata.version,
-                            normalization_version=NORMALIZATION_VERSION,
-                            evidence_path=crop_path,
-                            frame_path=frame_path,
-                            evidence_timestamp_s=frame.timestamp_s,
+                        match = matches.get(index)
+                        score = match[1] if match else 1
+                        if match:
+                            cluster = match[0]
+                            db.execute(
+                                "UPDATE text_clusters SET end_s=?,support_count=support_count+1 WHERE id=?",
+                                (frame.timestamp_s, cluster),
+                            )
+                            best = db.execute(
+                                "SELECT best_confidence FROM text_clusters WHERE id=?", (cluster,)
+                            ).fetchone()[0]
+                            if result.confidence is not None and (
+                                best is None or result.confidence > best
+                            ):
+                                db.execute(
+                                    """UPDATE text_clusters SET representative_observation_id=?,
+                                    representative_polygon_blob=?,screen_region=?,canonical_text=?,
+                                    normalized_text=?,compact_text=?,best_confidence=?,evidence_path=?,
+                                    frame_path=?,evidence_timestamp_s=? WHERE id=?""",
+                                    (
+                                        observation,
+                                        polygon,
+                                        region,
+                                        result.text,
+                                        normalize(result.text),
+                                        compact(result.text),
+                                        result.confidence,
+                                        crop_path,
+                                        frame_path,
+                                        frame.timestamp_s,
+                                        cluster,
+                                    ),
+                                )
+                        else:
+                            cluster = insert(
+                                db,
+                                "text_clusters",
+                                video_scan_id=scan_id,
+                                video_id=video["id"],
+                                start_s=frame.timestamp_s,
+                                end_s=frame.timestamp_s,
+                                representative_observation_id=observation,
+                                representative_polygon_blob=polygon,
+                                screen_region=region,
+                                canonical_text=result.text,
+                                normalized_text=normalize(result.text),
+                                compact_text=compact(result.text),
+                                best_confidence=result.confidence,
+                                support_count=1,
+                                model_version=recognizer.metadata.version,
+                                normalization_version=NORMALIZATION_VERSION,
+                                evidence_path=crop_path,
+                                frame_path=frame_path,
+                                evidence_timestamp_s=frame.timestamp_s,
+                            )
+                        track = tracker.observe(cluster, frame, crop, result)
+                        db.execute(
+                            "UPDATE text_clusters SET motion_summary_json=? WHERE id=?",
+                            (json.dumps(track.motion()), cluster),
                         )
                         insert(
                             db,
@@ -187,12 +227,16 @@ def ingest_detected(
                             video_scan_id=scan_id,
                             cluster_id=cluster,
                             observation_id=observation,
-                            support_score=1,
+                            support_score=score,
                         )
                     db.execute(
                         "UPDATE scan_chunks SET last_processed_timestamp_s=? WHERE id=?",
                         (frame.timestamp_s, chunk),
                     )
+            for identity in tracker.active:
+                db.execute(
+                    "UPDATE text_clusters SET close_reason='end_of_scan' WHERE id=?", (identity,)
+                )
             if not count:
                 raise RuntimeError("No video frames decoded")
             db.execute(
