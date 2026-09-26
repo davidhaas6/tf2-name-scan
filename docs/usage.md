@@ -1,4 +1,10 @@
-# Running the MVP
+# Running the scanner
+
+The default configuration now describes full-frame detection. Paddle loading is
+R04; CLI detection scans currently fail before media acquisition. The OpenOCR
+scan/calibration commands below are the explicit `pipeline: legacy_hud`
+compatibility workflow. Query/report/index commands need no inference setup.
+See [implementation status](refinement-progress.md) for the package boundaries.
 
 Install Python 3.10.11 or newer, FFmpeg and FFprobe on PATH, then run:
 
@@ -65,9 +71,10 @@ Downloads use video-only streams at up to 720p, partial-file continuation and an
 archive. A removed download can be downloaded again for explicit reprocessing.
 
 Completed videos are skipped even if the current query or model configuration
-changes. Use `--reprocess` explicitly to replace a video's corpus for a new HUD,
-model, preprocessing, or sampling rate. This invalidates that video's derived hits.
-The old corpus and evidence remain valid if replacement ingestion fails.
+changes. Use `--reprocess` to create a new scan/run for changed HUD, model,
+preprocessing or sampling settings. Historical observations, reviews, hits and
+evidence remain intact. Default queries/reports select the latest completed scan
+per video; failed or incomplete reprocessing does not replace the prior selection.
 Resume granularity is one video: interruption retries the unfinished video from
 the beginning, while completed videos are never re-OCRed automatically.
 Only one writer/scanner should run against an output directory at a time.
@@ -87,10 +94,11 @@ Separate notices in the same frame cannot merge. Similar repeated events can
 still merge; this is a retrieval heuristic, not exact death-event reconstruction.
 
 Only the highest-confidence representative row crop and full frame per cluster
-are saved. Observation `crop_path` refers to that representative, not necessarily
-the observation's own frame. The cluster's `evidence_timestamp_s` and
-`evidence_row_index` identify that exact representative; `videos.scan_config_json`
-records the sampling and preprocessing settings. Text variants remain available
+are saved. Only the actual representative observation has a `crop_path`; other
+observations have null paths. Migrated ambiguous evidence remains explicitly marked
+in `legacy_evidence_path`. Immutable `scan_runs` contain effective configuration
+and model provenance; `video_scans`, chunks, frames and support links trace each
+text cluster to its source. Text variants remain available
 to subsequent queries. Report generation cleans up scanner-owned orphan images
 left by abruptly terminated scans.
 Blank OCR output is discarded; nonmatching and low-confidence nonempty text stays.

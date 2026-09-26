@@ -5,7 +5,9 @@ it for a username and aliases. Changing targets reruns matching only—no downlo
 frame decoding, or OCR.
 
 Start with [setup and CLI usage](docs/usage.md), copy `config.example.yaml`, and
-configure the official English OpenOCR SVTRv2-S weights. Python, FFmpeg and FFprobe
+see [implementation status](docs/refinement-progress.md). The example config uses
+full-frame detection contracts; Paddle runtime loading follows in R04. The
+OpenOCR scan commands below require `pipeline: legacy_hud` and configured weights. Python, FFmpeg and FFprobe
 are required. SQLite stores corpus data and derived query hits; a static HTML
 report provides timestamp links, evidence and review state.
 

@@ -29,3 +29,48 @@ invalid values/interdependent limits, weight/override identity and query exclusi
 coverage; full pytest and Ruff results are recorded in the requirement commit.
 
 R01 validation result: 31 tests passed; Ruff passed. Real model setup is deferred to R04.
+
+
+## R02 ? immutable lineage and migration
+
+Migration v3 leaves migrations v1/v2 unchanged and retains their corpus tables as
+`legacy_*` audit records. Before upgrading an existing database, SQLite's backup
+API saves `results.pre-vN-migration.sqlite3` including committed WAL contents.
+An existing backup is never overwritten: rename/archive it before retrying a
+failed operational migration. Import and schema creation are transactional;
+count and foreign-key checks run before v3 commits. Keep the backup for recovery.
+
+The new tables are `scan_runs`, `video_scans`, `scan_chunks`, `chunk_attempts`,
+`sampled_frames`, `observations`, `text_clusters`, and `cluster_observations`.
+Hits and borderline matches refer to the new corpus. Run reproducibility metadata
+and scan ownership are immutable. Compound foreign keys prohibit cross-scan
+frame/support/representative links. Geometry uses validated clockwise convex
+source-pixel quadrilaterals, packed as eight little-endian float32 values
+(`quad-f32le-v1`). JSON exports decode geometry; the separate 1/16-pixel lattice
+key is deterministic identity only, not an overlap/deduplication algorithm.
+
+Legacy imports preserve IDs, both normalized forms, model/HUD metadata, reviews,
+notes, config snapshots/signatures and evidence paths. Missing dimensions,
+detector counts, model hashes and start times remain unknown. A synthetic chunk
+is explicitly `legacy-container`. Only an unambiguous timestamp/row representative
+gets an actual observation crop; ambiguous paths remain marked legacy references.
+Legacy support scores of 1 mean direct original row membership, not measured
+geometric similarity. Retained legacy tables are audit-only, never queried as an
+additional corpus.
+
+Reprocessing appends a new run/scan and preserves old evidence and hits.
+`Store.selected_scan_ids` / `selected_clusters` choose the latest successfully
+completed scan per video, with explicit `scan_id` or `run_id` selection available
+in Python `run_query` and `export_report`. CLI selectors are deferred to R14.
+Reviews remain in their original lineage and do not transfer to new clusters.
+`start_scan(..., resume=True)` only resumes an unfinished matching config/model
+snapshot; changed settings require a new run. Chunk replay integration is R07.
+The legacy scanner still commits a whole video; its failed attempt is recorded
+without displacing the prior completed scan. Query promotion remains the old
+versioned eight-second rule until R09, and records these settings separately.
+
+Validation includes populated v1/v2 migration, backup contents, injected import
+failure, historical export/search/review preservation, failed/latest selection,
+resume mismatch, geometry encoding, duplicate identities and cross-scan rejection.
+
+R02 validation result: 37 tests passed; Ruff passed, including the real FFmpeg fixture.

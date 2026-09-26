@@ -75,7 +75,7 @@ def test_rematch_uses_all_rows_and_preserves_corpus_and_reviews(config):
         ingest(store, config, video, model, frame_source=frames([0, 1, 20]))
         before = store.rows("SELECT * FROM observations")
         assert len(before) == 3
-        assert len(store.rows("SELECT * FROM row_clusters")) == 2
+        assert len(store.rows("SELECT * FROM text_clusters")) == 2
         first = run_query(store, "AlphaPlayer")
         second = run_query(store, "OtherPlayer")
         assert first != second
@@ -104,7 +104,7 @@ def test_failed_reprocess_rolls_back_corpus_and_evidence(config):
     with Store(config.root) as store:
         video = add_video(store)
         ingest(store, config, video, FakeRecognizer(["Original player"]), frame_source=frames([0]))
-        before = store.rows("SELECT * FROM row_clusters")
+        before = store.rows("SELECT * FROM text_clusters")
         before_assets = set((config.root / "report/assets").rglob("*.png"))
         with pytest.raises(StopIteration):
             ingest(
@@ -115,12 +115,12 @@ def test_failed_reprocess_rolls_back_corpus_and_evidence(config):
                 reprocess=True,
                 frame_source=frames([0]),
             )
-        assert store.rows("SELECT * FROM row_clusters") == before
+        assert store.rows("SELECT * FROM text_clusters") == before
         assert set((config.root / "report/assets").rglob("*.png")) == before_assets
         assert store.video("test")["status"] == "scanned"
 
 
-def test_reprocess_replaces_hits_and_delete_removes_evidence(config):
+def test_reprocess_preserves_history_and_delete_removes_evidence(config):
     with Store(config.root) as store:
         ingest(
             store,
@@ -130,7 +130,7 @@ def test_reprocess_replaces_hits_and_delete_removes_evidence(config):
             frame_source=frames([0]),
         )
         run_query(store, "FirstPlayer")
-        old = store.rows("SELECT * FROM row_clusters")[0]
+        old = store.rows("SELECT * FROM text_clusters")[0]
         ingest(
             store,
             config,
@@ -139,9 +139,12 @@ def test_reprocess_replaces_hits_and_delete_removes_evidence(config):
             reprocess=True,
             frame_source=frames([1]),
         )
-        assert not store.rows("SELECT * FROM hits")
-        assert not (config.root / old["evidence_path"]).exists()
-        assert len(store.rows("SELECT * FROM observations")) == 1
+        assert store.rows("SELECT * FROM hits")
+        assert (config.root / old["evidence_path"]).exists()
+        assert len(store.rows("SELECT * FROM observations")) == 2
+        assert store.selected_clusters()[0]["canonical_text"] == "SecondPlayer"
+        assert export_report(store) == []
+        assert export_report(store, scan_id=old["video_scan_id"])[0]["best_text"] == "FirstPlayer"
         store.delete_video("test")
         assert not store.rows("SELECT * FROM observations")
         assert not list((config.root / "report/assets").rglob("*.png"))

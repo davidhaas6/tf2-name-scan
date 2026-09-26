@@ -19,13 +19,21 @@ def timestamp_url(url, seconds):
     return url + ("&" if "?" in url else "?") + f"t={math.floor(seconds)}s"
 
 
-def export_report(store, query_id=None, rows=False):
+def export_report(store, query_id=None, rows=False, *, scan_id=None, run_id=None):
     condition, params = ("WHERE h.query_id=?", (query_id,)) if query_id else ("", ())
+    scan_ids = store.selected_scan_ids(scan_id=scan_id, run_id=run_id)
+    condition += (
+        (" AND " if condition else "WHERE ")
+        + "c.video_scan_id IN ("
+        + ",".join("?" for _ in scan_ids)
+        + ")"
+    )
+    params = (*params, *scan_ids)
     hits = store.rows(
         f"""SELECT h.*,c.video_id,c.start_s,c.end_s,c.frame_path,
         c.model_version,c.normalization_version,c.hud_profile,c.evidence_timestamp_s,
         c.evidence_row_index,v.title,v.source_url,
-        q.target_name FROM hits h JOIN row_clusters c ON c.id=h.row_cluster_id
+        q.target_name FROM hits h JOIN text_clusters c ON c.id=h.text_cluster_id
         JOIN videos v ON v.id=c.video_id JOIN queries q ON q.id=h.query_id
         {condition} ORDER BY h.best_score DESC,c.start_s""",
         params,
@@ -35,8 +43,9 @@ def export_report(store, query_id=None, rows=False):
         hit["ocr_strings"] = [
             row[0]
             for row in store.db.execute(
-                "SELECT DISTINCT raw_text FROM observations WHERE row_cluster_id=?",
-                (hit["row_cluster_id"],),
+                "SELECT DISTINCT raw_text FROM observations o JOIN cluster_observations co "
+                "ON co.observation_id=o.id WHERE co.cluster_id=?",
+                (hit["text_cluster_id"],),
             )
         ]
     atomic_write(
@@ -46,13 +55,22 @@ def export_report(store, query_id=None, rows=False):
         path = store.root / "rows.jsonl"
         temporary = path.with_suffix(".jsonl.tmp")
         with temporary.open("w", encoding="utf-8") as output:
-            for row in store.db.execute("""SELECT c.*,v.source_url,v.title,v.channel_id
-                FROM row_clusters c JOIN videos v ON v.id=c.video_id ORDER BY c.video_id,c.start_s"""):
+            for row in store.selected_clusters(scan_id=scan_id, run_id=run_id):
                 value = dict(row)
+                video = store.video(row["video_id"])
+                value.update({key: video[key] for key in ("source_url", "title", "channel_id")})
+                if value["representative_polygon_blob"] is not None:
+                    from .geometry import decode_polygon
+
+                    value["representative_polygon"] = decode_polygon(
+                        value["representative_polygon_blob"]
+                    )
+                del value["representative_polygon_blob"]
                 value["ocr_strings"] = [
                     r[0]
                     for r in store.db.execute(
-                        "SELECT DISTINCT raw_text FROM observations WHERE row_cluster_id=?",
+                        "SELECT DISTINCT raw_text FROM observations o JOIN cluster_observations co "
+                        "ON co.observation_id=o.id WHERE co.cluster_id=?",
                         (row["id"],),
                     )
                 ]

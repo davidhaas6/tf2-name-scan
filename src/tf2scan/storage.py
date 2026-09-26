@@ -5,6 +5,10 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from .geometry import decode_polygon
+from .lineage import LineageStore, migrate_legacy
+from .lineage_schema import SCHEMA
+
 MIGRATIONS = [
     """
 CREATE TABLE videos (
@@ -62,19 +66,48 @@ ALTER TABLE videos ADD COLUMN scan_config_json TEXT;
 ]
 
 
-class Store:
+MIGRATIONS.append(SCHEMA)
+
+
+class Store(LineageStore):
     def __init__(self, root):
         self.root = root
         root.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(root / "results.sqlite3")
         self.db.row_factory = sqlite3.Row
+
+        def valid_polygon(blob):
+            try:
+                decode_polygon(blob)
+                return 1
+            except (ValueError, TypeError):
+                return 0
+
+        self.db.create_function("valid_polygon", 1, valid_polygon, deterministic=True)
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.execute("PRAGMA journal_mode=WAL")
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
         if version > len(MIGRATIONS):
             raise ValueError("Database was created by a newer tf2scan version")
+        self.db.execute("PRAGMA synchronous=NORMAL")
+        if 0 < version < len(MIGRATIONS):
+            backup = root / f"results.pre-v{version}-migration.sqlite3"
+            if backup.exists():
+                raise FileExistsError(f"Preserve or rename existing migration backup: {backup}")
+            with sqlite3.connect(backup) as destination:
+                self.db.backup(destination)
         for i, sql in enumerate(MIGRATIONS[version:], start=version + 1):
-            self.db.executescript(f"BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version={i};\nCOMMIT;")
+            with self.db:
+                self.db.execute("BEGIN IMMEDIATE")
+                statement = ""
+                for line in sql.splitlines(keepends=True):
+                    statement += line
+                    if sqlite3.complete_statement(statement):
+                        self.db.execute(statement)
+                        statement = ""
+                if i == 3:
+                    migrate_legacy(self.db)
+                self.db.execute(f"PRAGMA user_version={i}")
 
     def __enter__(self):
         return self
@@ -127,7 +160,15 @@ class Store:
         """Remove only this source's owned evidence and managed download."""
         video = self.video(video_id)
         paths = self.rows(
-            "SELECT evidence_path,frame_path FROM row_clusters WHERE video_id=?", (video_id,)
+            "SELECT evidence_path AS path FROM text_clusters WHERE video_id=? "
+            "UNION SELECT frame_path FROM text_clusters WHERE video_id=? "
+            "UNION SELECT crop_path FROM observations WHERE video_scan_id IN "
+            "(SELECT id FROM video_scans WHERE video_id=?) "
+            "UNION SELECT legacy_evidence_path FROM observations WHERE video_scan_id IN "
+            "(SELECT id FROM video_scans WHERE video_id=?) "
+            "UNION SELECT full_frame_path FROM sampled_frames WHERE video_scan_id IN "
+            "(SELECT id FROM video_scans WHERE video_id=?)",
+            (video_id,) * 5,
         )
         for row in paths:
             for value in row.values():
@@ -152,7 +193,11 @@ class Store:
         if not assets.is_dir() or not assets.is_relative_to(self.root.resolve()):
             return
         referenced = set()
-        for row in self.db.execute("SELECT evidence_path,frame_path FROM row_clusters"):
+        for row in self.db.execute(
+            "SELECT evidence_path FROM text_clusters UNION SELECT frame_path FROM text_clusters "
+            "UNION SELECT crop_path FROM observations UNION SELECT legacy_evidence_path FROM observations "
+            "UNION SELECT full_frame_path FROM sampled_frames"
+        ):
             referenced.update((self.root / value).resolve() for value in row if value)
         for folder in assets.iterdir():
             if not re.fullmatch(r"[0-9a-f]{16}-[0-9a-f]{32}", folder.name):

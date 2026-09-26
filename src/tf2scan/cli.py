@@ -101,7 +101,7 @@ def execute(args):
             for video in queue:
                 if video["status"] == "scanned" and not args.reprocess:
                     log.info(
-                        "Already scanned: %s (use --reprocess to replace corpus rows)", video["id"]
+                        "Already scanned: %s (use --reprocess to create a new scan)", video["id"]
                     )
                     continue
                 try:
