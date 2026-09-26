@@ -1,6 +1,6 @@
 # Running the scanner
 
-The default pipeline scans local files with PP-OCRv6-small detection and
+The default pipeline scans local files and bounded remote VOD sections with PP-OCRv6-small detection and
 recognition. No HUD profile or calibration is needed. Query/report/index commands
 need no inference setup. See [implementation status](refinement-progress.md).
 
@@ -37,15 +37,17 @@ APIs. Run metadata records actual artifact hashes, runtime versions and preproce
 
 `scan` retains useful text across the whole frame, clusters nearby observations,
 and then runs the configured query. `report --rows` exports all clusters to
-`rows.jsonl`. Each retained observation has its own crop; the cluster points to
-its highest-confidence representative. Set `evidence.full_frames: true` to also
+`rows.jsonl`. Each cluster keeps a crop for its highest-confidence representative;
+other observations may have no crop. Set `evidence.full_frames: true` to also
 retain sampled frames with accepted text. There is no evidence compaction yet.
 
-This milestone processes a local file in one transaction. Remote streaming,
-incremental resume, bounded persistence and chunk reconciliation follow in R06/R07.
+Detection scans use bounded sections and commit frames at configured video-time,
+row, or memory limits. Interrupted scans resume their matching run and skip durable
+frames and completed chunks. A failed reprocess leaves the previous completed scan
+and its evidence available.
 The matching/report transition follows in R09-R11: query promotion still uses its
 legacy eight-second rule, while detection clustering uses three seconds. The
-reserved acquisition/persistence settings do not yet change local execution.
+evidence compaction and final report transition remain in R10/R11.
 
 All commands accept `--config PATH`. Configured paths resolve relative to that YAML
 file; command-line local video paths resolve relative to the working directory.
@@ -123,16 +125,19 @@ uv run tf2scan scan --video YOUTUBE_ID --fps 2 --reprocess
 Indexing expands each configured source and applies inclusive dates, regex title,
 and duration filters. Missing metadata needed by a filter causes a skip. Indexing
 again preserves completed scan state. Failed videos are retried by `--pending`.
-Downloads use video-only streams at up to 720p, partial-file continuation and an
-archive. A removed download can be downloaded again for explicit reprocessing.
+Detection scans resolve a video-only stream with yt-dlp and pass bounded sections
+to FFmpeg. They do not keep a full media download. A finite VOD duration is required.
+Legacy HUD scans still use managed whole-file downloads.
 
 Completed videos are skipped even if the current query or model configuration
 changes. Use `--reprocess` to create a new scan/run for changed HUD, model,
 preprocessing or sampling settings. Historical observations, reviews, hits and
 evidence remain intact. Default queries/reports select the latest completed scan
 per video; failed or incomplete reprocessing does not replace the prior selection.
-Resume granularity is one video: interruption retries the unfinished video from
-the beginning, while completed videos are never re-OCRed automatically.
+Resume keeps completed chunks and committed batches. The current chunk is requested
+again with overlap, but persisted frames have one canonical core chunk owner.
+`--chunk-seconds` overrides the default 600-second section length; `--fps` sets
+the global sample grid. Failed chunks use bounded exponential backoff.
 Only one writer/scanner should run against an output directory at a time.
 
 With `retain_downloads: false`, managed downloads are removed only after ingestion,

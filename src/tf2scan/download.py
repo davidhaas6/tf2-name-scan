@@ -1,4 +1,27 @@
 from pathlib import Path
+from urllib.parse import urlparse
+
+
+def resolve_stream(video):
+    """Resolve a VOD to one video-only media URL without retaining a download."""
+    from yt_dlp import YoutubeDL
+
+    with YoutubeDL({"format": "bestvideo[height<=720]/bestvideo", "noplaylist": True,
+                    "quiet": True, "skip_download": True, "retries": 2}) as ydl:
+        info = ydl.extract_info(video["source_url"], download=False)
+    if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
+        raise ValueError("Live streams are unsupported; index a bounded VOD")
+    duration = info.get("duration") or video.get("duration_s")
+    if not isinstance(duration, (int, float)) or not 0 < duration < float("inf"):
+        raise ValueError("A finite VOD duration is required for bounded scanning")
+    url = info.get("url")
+    if not url:
+        raise ValueError("yt-dlp did not resolve a video-only stream URL")
+    dimensions = {"width": info.get("width"), "height": info.get("height")}
+    if not all(isinstance(value, int) and value > 0 for value in dimensions.values()):
+        dimensions = None
+    host = urlparse(video["source_url"]).hostname
+    return url, float(duration), dimensions, host, info.get("http_headers") or {}
 
 
 def download(store, video):

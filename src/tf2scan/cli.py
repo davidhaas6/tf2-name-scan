@@ -43,6 +43,7 @@ def parser():
             sources.add_argument("--local", type=Path)
             sub.add_argument("--profile")
             sub.add_argument("--fps", type=float)
+            sub.add_argument("--chunk-seconds", type=float)
             sub.add_argument("--reprocess", action="store_true")
         elif name == "query":
             sub.add_argument("--name")
@@ -83,7 +84,13 @@ def execute(args):
             print(f"Indexed {count} videos; {failed} failures")
             return int(bool(failed))
         if args.command == "scan":
-            config.effective_scan({"sampling": {"fps": args.fps}} if args.fps is not None else None)
+            sampling_overrides = {k: v for k, v in
+                                  (("fps", args.fps),
+                                   ("chunk_seconds", getattr(args, "chunk_seconds", None)))
+                                  if v is not None}
+            if sampling_overrides:
+                config.data.setdefault("sampling", {}).update(sampling_overrides)
+            config.effective_scan()
             if args.fps is not None:
                 positive(args.fps, "fps")
             if args.local:
@@ -92,22 +99,22 @@ def execute(args):
                 queue = [store.video(args.video)]
             else:
                 queue = store.rows(
-                    "SELECT * FROM videos WHERE status IN ('pending','downloaded','failed') ORDER BY id"
+                    """SELECT * FROM videos WHERE status IN ('pending','downloaded','failed')
+                    OR EXISTS (SELECT 1 FROM video_scans s WHERE s.video_id=videos.id
+                    AND s.status!='completed') ORDER BY id"""
                 )
             recognizer = None
             detector = None
             failures = 0
             for video in queue:
-                if video["status"] == "scanned" and not args.reprocess:
+                unfinished = store.rows("SELECT id FROM video_scans WHERE video_id=? AND "
+                                        "status!='completed' LIMIT 1", (video["id"],))
+                if video["status"] == "scanned" and not args.reprocess and not unfinished:
                     log.info(
                         "Already scanned: %s (use --reprocess to create a new scan)", video["id"]
                     )
                     continue
                 try:
-                    if config.data["pipeline"] != "legacy_hud" and (
-                        not video["local_path"] or not Path(video["local_path"]).is_file()
-                    ):
-                        raise ValueError("Detection scans currently require a local file; use --local")
                     if args.profile:
                         config.profile(override=args.profile)
                         video["hud_profile"] = args.profile
@@ -121,8 +128,9 @@ def execute(args):
                             detector, recognizer = create_models(config)
                             models.callback(detector.close)
                             models.callback(recognizer.close)
-                    path = download(store, video)
-                    video["local_path"] = str(path)
+                    if config.data["pipeline"] == "legacy_hud":
+                        path = download(store, video)
+                        video["local_path"] = str(path)
                     ingest(
                         store,
                         config,

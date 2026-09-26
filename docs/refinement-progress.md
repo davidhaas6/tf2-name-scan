@@ -144,3 +144,36 @@ frames, persisted decoded geometry, scan failure isolation, and actual FFmpeg
 native 320x180 plus reduced 1920x1080 media.
 
 R03 validation result: 52 tests passed; Ruff and git diff --check passed. Both real FFmpeg fixtures ran. Original v1/v2 migration definitions and high-level-design.md were verified unchanged. Paddle model integration/smoke testing remains R04.
+
+## Streaming and recovery (R06/R07 integration)
+
+Detection scans now resolve remote VOD media URLs with yt-dlp, require finite
+duration, and decode bounded FFmpeg sections. Local files use the same chunk
+schedule. The default core interval is 600 seconds with a three-second acquisition
+overlap. Each global-grid sample belongs to one half-open core interval, and its
+sample key is unique within the scan. Completed chunks are skipped on resume.
+
+Frames are prepared and recognized before a SQLite write transaction. Frames,
+observations, support links, representative evidence references and the chunk
+watermark commit together at the configured video-time, row or frame-byte bound.
+The scan becomes visible to default queries only after all chunks complete. A
+failed attempt retains prior committed work and evidence. Retry diagnostics include
+the requested range, elapsed time and error. V5 migration adds these diagnostics.
+
+The tracker reconstructs recent active tracks from committed motion summaries and
+last observations, allowing a notice to continue across a chunk or process
+restart. Representative crops are written atomically before database references;
+rejected transactions leave unreferenced files eligible for orphan cleanup.
+Reprocessing appends a new scan, so a failed reprocess preserves the previous
+completed corpus and its evidence.
+
+The remote path relies on yt-dlp's selected direct media URL and FFmpeg's normal
+HTTP handling. It has deterministic mocked source coverage; live network/model
+integration remains environment-dependent. Evidence candidate compaction and the
+query/report transition remain in R10/R11.
+
+Validation: 75 tests pass, Ruff passes, and a real Paddle scan of the 12-second
+`gameplay-smoke.mp4` completed two six-second local chunks. It stored 12 sampled
+frames, 86 observations and 67 clusters; visible killfeed name `Seojer` has two
+supporting observations. The separate `local-smoke.mp4` has no visible killfeed
+and was used only for mechanical scan validation.

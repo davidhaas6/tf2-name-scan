@@ -222,12 +222,15 @@ class LineageStore:
                 (status, scan_id),
             )
 
-    def record_attempt(self, chunk_id, error=None):
+    def record_attempt(self, chunk_id, error=None, *, requested_start_s=None,
+                       requested_end_s=None):
         with self.db:
             number = self.db.execute(
                 "SELECT coalesce(max(attempt_no),0)+1 FROM chunk_attempts WHERE scan_chunk_id=?",
                 (chunk_id,),
             ).fetchone()[0]
             return insert(
-                self.db, "chunk_attempts", scan_chunk_id=chunk_id, attempt_no=number, error=error
+                self.db, "chunk_attempts", scan_chunk_id=chunk_id, attempt_no=number,
+                error=error, requested_start_s=requested_start_s,
+                requested_end_s=requested_end_s,
             )

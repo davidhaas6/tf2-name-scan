@@ -69,6 +69,37 @@ class TextTracker:
         self.active = {}
         self.last_time = -1
 
+    @classmethod
+    def restore(cls, settings, store, scan_id):
+        """Rebuild only tracks still eligible at the committed watermark."""
+        import json
+
+        tracker = cls(settings)
+        watermark = store.db.execute(
+            "SELECT max(last_processed_timestamp_s) FROM scan_chunks WHERE video_scan_id=?",
+            (scan_id,),
+        ).fetchone()[0]
+        if watermark is None:
+            return tracker
+        tracker.last_time = watermark
+        rows = store.rows(
+            """SELECT c.id,c.end_s,c.support_count,c.motion_summary_json,o.raw_text
+            FROM text_clusters c JOIN cluster_observations link ON link.cluster_id=c.id
+            JOIN observations o ON o.id=link.observation_id
+            JOIN sampled_frames f ON f.id=o.sampled_frame_id
+            WHERE c.video_scan_id=? AND c.end_s>=? AND c.close_reason IS NULL
+            AND f.timestamp_s=c.end_s ORDER BY c.id,o.id""",
+            (scan_id, watermark - settings["gap_s"]),
+        )
+        for row in rows:
+            motion = json.loads(row["motion_summary_json"])
+            tracker.active[row["id"]] = TextTrack(
+                row["id"], row["end_s"], tuple(motion["center"]),
+                tuple(motion["size"]), row["raw_text"],
+                tuple(motion["velocity_per_s"]), row["support_count"],
+            )
+        return tracker
+
     @staticmethod
     def geometry(frame, crop):
         points = crop.detection.polygon

@@ -12,7 +12,9 @@ SHA-256: `2f28ebadb7f119bf0afe7e531b7cbe33db5788bbc6f69e6196770b50533d0f96`.
 The source is 640x360. Two 12-second excerpts were encoded using FFmpeg/libx264,
 starting at source times 30 and 240 seconds. Scans used one frame per second,
 native detector resolution, default filtering/tracking, and full-frame evidence.
-Stored timestamps are relative to each excerpt.
+Stored timestamps are relative to each excerpt. `local-smoke.mp4` is the first
+excerpt and has no visible killfeed; it exercises HUD text and negative regions.
+`gameplay-smoke.mp4` is the second excerpt and has visible killfeed notices.
 
 | Excerpt | Frames | Raw / recognized | Accepted observations | Clusters |
 |---|---:|---:|---:|---:|
@@ -31,8 +33,8 @@ Visually checked examples:
 - Stable HUD text, such as `Waiting For Players`, has twelve supporting frames.
 
 SQLite-only `query --name Seojer` returned one candidate. Actual crop files and
-full frames are under `output/local-smoke-results/report/assets/`; all clusters
-are exported to `output/local-smoke-results/rows.jsonl`. The local clips, model
+full frames are under the ignored smoke-result directories; clusters are exported
+to their `rows.jsonl` files. The local clips, model
 weights, database and evidence are ignored artifacts, not committed fixtures.
 This is a functional smoke check, not a precision/recall benchmark. Some tiny
 names are missed or misread, and changing numeric HUD text can share a cluster.

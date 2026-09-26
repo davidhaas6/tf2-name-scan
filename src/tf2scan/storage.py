@@ -1,4 +1,4 @@
-"""Versioned SQLite corpus. Ingestion commits once per complete video."""
+"""Versioned SQLite corpus with durable scan batches."""
 
 import re
 import sqlite3
@@ -70,6 +70,12 @@ MIGRATIONS.append(SCHEMA)
 MIGRATIONS.append("""
 ALTER TABLE observations ADD COLUMN detection_identity TEXT;
 ALTER TABLE observations ADD COLUMN crop_transform_json TEXT;
+""")
+MIGRATIONS.append("""
+ALTER TABLE chunk_attempts ADD COLUMN requested_start_s REAL;
+ALTER TABLE chunk_attempts ADD COLUMN requested_end_s REAL;
+ALTER TABLE chunk_attempts ADD COLUMN elapsed_s REAL;
+ALTER TABLE chunk_attempts ADD COLUMN media_bytes INTEGER;
 """)
 
 
@@ -210,7 +216,8 @@ class Store(LineageStore):
                 continue
             for path in folder.iterdir():
                 if (
-                    re.fullmatch(r"\d+-(row\.png|frame\.jpg)", path.name)
+                    re.fullmatch(r"\d+-(row\.png|frame\.jpg)(\.[0-9a-f]{32}\.tmp)?",
+                                 path.name)
                     and path.is_file()
                     and not path.is_symlink()
                     and path.resolve().is_relative_to(assets)

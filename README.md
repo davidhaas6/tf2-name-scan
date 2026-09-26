@@ -6,7 +6,7 @@ frame decoding, or OCR.
 
 Start with [setup and CLI usage](docs/usage.md), copy `config.example.yaml`, and
 see [implementation status](docs/refinement-progress.md). The example config uses
-full-frame Paddle detection and recognition for local files. The verified runtime
+full-frame Paddle detection and recognition for local files and bounded remote VODs. The verified runtime
 uses Python 3.10.11; FFmpeg and FFprobe are required. SQLite stores corpus data and derived query hits; a static HTML
 report provides timestamp links, evidence and review state.
 

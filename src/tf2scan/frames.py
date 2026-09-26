@@ -34,14 +34,17 @@ def probe(path):
     return stream, float(data.get("format", {}).get("duration", 0))
 
 
-def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=None):
+def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=None,
+                  end=None, dimensions=None, http_headers=None):
     if not math.isfinite(fps) or not math.isfinite(start) or fps <= 0 or start < 0:
         raise ValueError("fps must be positive and start nonnegative")
     if isinstance(max_height, bool) or not isinstance(max_height, int) or max_height <= 0:
         raise ValueError("max_height must be a positive integer")
     if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
         raise ValueError("limit must be a positive integer")
-    stream, _ = probe(path)
+    if end is not None and (not math.isfinite(end) or end <= start):
+        raise ValueError("end must exceed start")
+    stream = dimensions if dimensions is not None else probe(path)[0]
     source_width, source_height = stream["width"], stream["height"]
     if source_width <= 0 or source_height <= 0:
         raise ValueError("Invalid video dimensions")
@@ -53,8 +56,12 @@ def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=
         "-v",
         "error",
         "-noautorotate",
+        *(["-rw_timeout", "30000000"] if str(path).startswith(("http:", "https:")) else []),
+        *(["-headers", "".join(f"{key}: {value}\r\n" for key, value in
+                              http_headers.items())] if http_headers else []),
         "-ss",
         str(start),
+        *(["-t", str(end - start)] if end is not None else []),
         "-i",
         str(path),
         "-map",
@@ -87,6 +94,8 @@ def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=
                 if len(data) != size:
                     raise RuntimeError("FFmpeg produced a truncated frame")
                 timestamp = start + index / fps
+                if end is not None and timestamp >= end - 1e-9:
+                    break
                 yield Frame(
                     timestamp,
                     f"{timestamp:.9f}",
@@ -97,13 +106,21 @@ def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=
                 )
                 index += 1
             if limit is None or index < limit:
-                code = process.wait()
+                try:
+                    code = process.wait(timeout=5)
+                except subprocess.TimeoutExpired as exc:
+                    raise RuntimeError("FFmpeg did not finish after video EOF") from exc
                 completed = True
                 if code:
                     errors.seek(0)
-                    raise RuntimeError(errors.read().decode(errors="replace"))
+                    detail = errors.read().decode(errors="replace").strip()
+                    raise RuntimeError(detail or f"FFmpeg upstream failed (exit {code})")
         finally:
             if not completed and process.poll() is None:
                 process.terminate()
             process.stdout.close()
-            process.wait()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()

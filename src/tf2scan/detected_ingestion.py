@@ -1,27 +1,23 @@
-"""Local full-frame Paddle pipeline with deterministic retention and tracking."""
+"""Bounded detector scanning with durable frame batches and resumable lineage."""
 
 import hashlib
 import json
+import math
+import time
 import uuid
-from itertools import islice
 from pathlib import Path
 
 from .clustering import TextTracker
 from .contracts import Frame
 from .crops import geometry_metadata
 from .detection import detect_frames
-from .frames import frame_iterator, sample_frames
+from .download import resolve_stream
+from .frames import frame_iterator, probe, sample_frames
 from .geometry import encode_polygon, geometry_key
 from .lineage import insert
 from .matching import NORMALIZATION_VERSION, compact, normalize
 from .retention import select_crops, useful_text
 from .settings import merge_settings
-
-
-def recognize_frame(frame, detections, recognizer, settings):
-    """Preserve detection/result association across invalid crops and OCR batches."""
-    prepared, _, _ = select_crops(frame, detections, settings)
-    return recognize_crops(prepared, recognizer, settings)
 
 
 def recognize_crops(prepared, recognizer, settings):
@@ -36,233 +32,292 @@ def recognize_crops(prepared, recognizer, settings):
     return results
 
 
-def ingest_detected(
-    store, config, video, detector, recognizer, *, fps=None, reprocess=False, frame_source=None
-):
-    if (
-        store.rows("SELECT id FROM selected_video_scans WHERE video_id=?", (video["id"],))
-        and not reprocess
-    ):
-        return False
+def recognize_frame(frame, detections, recognizer, settings):
+    prepared, _, _ = select_crops(frame, detections, settings)
+    return recognize_crops(prepared, recognizer, settings)
+
+
+def _prepare_frame(frame, detections, recognizer, settings):
+    prepared, duplicates, capped = select_crops(frame, detections, settings)
+    recognized = recognize_crops(prepared, recognizer, settings)
+    accepted = [(crop, result) for crop, result in recognized
+                if useful_text(result, settings["crops"]["confidence_floor"])]
+    return frame, len(detections), duplicates, capped, len(recognized), accepted
+
+
+def _chunks(duration, seconds):
+    for sequence in range(math.ceil(duration / seconds)):
+        start = sequence * seconds
+        yield sequence, start, min(duration, start + seconds)
+
+
+def _save_image(image, path, **options):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        image.save(temporary, format="JPEG" if path.suffix == ".jpg" else "PNG", **options)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries, recognizer, settings):
+    """Inference finishes before entering a write transaction; watermark commits last."""
+    with store.transaction() as db:
+        for frame, raw_count, duplicates, capped, recognition_count, accepted in entries:
+            if frame.chunk_id not in (None, chunk_id):
+                raise ValueError("Frame belongs to another chunk")
+            if frame.timestamp_s <= tracker.last_time:
+                continue
+            frame_id = insert(
+                db, "sampled_frames", scan_chunk_id=chunk_id, video_scan_id=scan_id,
+                sample_key=frame.sample_key, timestamp_s=frame.timestamp_s,
+                source_width=frame.source_width, source_height=frame.source_height,
+                working_width=frame.image.width, working_height=frame.image.height,
+                raw_detection_count=raw_count, duplicate_detection_count=duplicates,
+                recognition_count=recognition_count, accepted_observation_count=len(accepted),
+                cap_dropped_count=capped,
+            )
+            db.execute("UPDATE video_scans SET input_width=?,input_height=? WHERE id=?",
+                       (frame.source_width, frame.source_height, scan_id))
+            frame_path = None
+            if settings["evidence"]["full_frames"] and accepted:
+                frame_path = (folder / f"{frame_id}-frame.jpg").as_posix()
+                _save_image(frame.image, store.root / frame_path, quality=85)
+                db.execute("UPDATE sampled_frames SET full_frame_path=? WHERE id=?",
+                           (frame_path, frame_id))
+            matches, closed = tracker.associate(frame, accepted)
+            for identity, reason in closed.items():
+                db.execute("UPDATE text_clusters SET close_reason=? WHERE id=?",
+                           (reason, identity))
+            for index, (crop, result) in enumerate(accepted):
+                detection = crop.detection
+                polygon = encode_polygon(detection.polygon)
+                region, width, height = geometry_metadata(
+                    detection.polygon, frame.source_width, frame.source_height
+                )
+                observation = insert(
+                    db, "observations", video_scan_id=scan_id, sampled_frame_id=frame_id,
+                    polygon_blob=polygon,
+                    geometry_key=geometry_key(detection.polygon) + ":" + detection.identity,
+                    detection_identity=detection.identity,
+                    crop_transform_json=json.dumps(crop.crop_to_source),
+                    screen_region=region, normalized_width=width, normalized_height=height,
+                    detector_confidence=detection.confidence, raw_text=result.text,
+                    normalized_text=normalize(result.text), compact_text=compact(result.text),
+                    ocr_confidence=result.confidence,
+                )
+                match = matches.get(index)
+                score = match[1] if match else 1
+                if match:
+                    cluster = match[0]
+                    db.execute("UPDATE text_clusters SET end_s=?,support_count=support_count+1 WHERE id=?",
+                               (frame.timestamp_s, cluster))
+                    best = db.execute("SELECT best_confidence FROM text_clusters WHERE id=?",
+                                      (cluster,)).fetchone()[0]
+                    representative = result.confidence is not None and (
+                        best is None or result.confidence > best)
+                else:
+                    representative = True
+                crop_path = None
+                if representative:
+                    crop_path = (folder / f"{observation}-row.png").as_posix()
+                    _save_image(crop.image, store.root / crop_path)
+                    db.execute("UPDATE observations SET crop_path=? WHERE id=?",
+                               (crop_path, observation))
+                if match:
+                    if representative:
+                        db.execute(
+                            """UPDATE text_clusters SET representative_observation_id=?,
+                            representative_polygon_blob=?,screen_region=?,canonical_text=?,
+                            normalized_text=?,compact_text=?,best_confidence=?,evidence_path=?,
+                            frame_path=?,evidence_timestamp_s=? WHERE id=?""",
+                            (observation, polygon, region, result.text, normalize(result.text),
+                             compact(result.text), result.confidence, crop_path, frame_path,
+                             frame.timestamp_s, cluster),
+                        )
+                else:
+                    cluster = insert(
+                        db, "text_clusters", video_scan_id=scan_id, video_id=video_id,
+                        start_s=frame.timestamp_s, end_s=frame.timestamp_s,
+                        representative_observation_id=observation,
+                        representative_polygon_blob=polygon, screen_region=region,
+                        canonical_text=result.text, normalized_text=normalize(result.text),
+                        compact_text=compact(result.text), best_confidence=result.confidence,
+                        support_count=1, model_version=recognizer.metadata.version,
+                        normalization_version=NORMALIZATION_VERSION, evidence_path=crop_path,
+                        frame_path=frame_path, evidence_timestamp_s=frame.timestamp_s,
+                    )
+                track = tracker.observe(cluster, frame, crop, result)
+                db.execute("UPDATE text_clusters SET motion_summary_json=? WHERE id=?",
+                           (json.dumps(track.motion()), cluster))
+                insert(db, "cluster_observations", video_scan_id=scan_id,
+                       cluster_id=cluster, observation_id=observation, support_score=score)
+            db.execute("UPDATE scan_chunks SET last_processed_timestamp_s=? WHERE id=?",
+                       (frame.timestamp_s, chunk_id))
+
+
+def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
+                    reprocess=False, frame_source=None):
     overrides = {"sampling": {"fps": fps}} if fps is not None else None
     settings = merge_settings(config.data, overrides)
     for adapter in (detector, recognizer):
         if not hasattr(adapter, "metadata"):
-            raise ValueError("Detection pipeline adapters must supply reproducibility metadata")
+            raise ValueError("Detection adapters must supply reproducibility metadata")
     snapshot, signature = config.effective_scan(
-        overrides, {"detector": detector.metadata, "recognizer": recognizer.metadata}
+        overrides, {"detector": detector.metadata, "recognizer": recognizer.metadata})
+    unfinished = store.rows(
+        "SELECT s.id,r.config_hash FROM video_scans s JOIN scan_runs r ON r.id=s.scan_run_id "
+        "WHERE s.video_id=? AND s.status!='completed' ORDER BY s.id DESC LIMIT 1",
+        (video["id"],),
     )
-    scan_id = store.start_scan(video["id"], snapshot, signature)
-    with store.transaction() as db:
-        chunk = insert(
-            db,
-            "scan_chunks",
-            video_scan_id=scan_id,
-            sequence_no=0,
-            chunk_start_s=0,
-            download_mode="local-full-frame",
-        )
-    folder = Path("report/assets") / (
-        hashlib.sha256(video["id"].encode()).hexdigest()[:16] + "-" + uuid.uuid4().hex
-    )
-    absolute = store.root / folder
-    absolute.mkdir(parents=True)
-    source = (
-        frame_source
-        if frame_source is not None
-        else sample_frames(
-            video["local_path"],
-            fps=settings["sampling"]["fps"],
-            max_height=settings["sampling"]["max_height"],
-            chunk_id=chunk,
-        )
-    )
-    tracker = TextTracker(settings["clustering"])
-    attempt = store.record_attempt(chunk)
+    if unfinished and not reprocess:
+        scan_id = store.start_scan(video["id"], snapshot, signature, resume=True)
+    elif not reprocess and store.rows(
+        "SELECT id FROM selected_video_scans WHERE video_id=?", (video["id"],)
+    ):
+        return False
+    else:
+        scan_id = store.start_scan(video["id"], snapshot, signature)
+    local = bool(video["local_path"] and Path(video["local_path"]).is_file())
+    headers = None
     try:
-        with store.transaction() as db, frame_iterator(source) as frames:
-            count = 0
-            while batch := list(islice(frames, settings["detector"]["batch_size"])):
-                if any(not isinstance(frame, Frame) for frame in batch):
-                    raise TypeError("Detection ingestion requires source-aware Frame records")
-                proposals = detect_frames(detector, batch)
-                for frame, detections in zip(batch, proposals):
-                    if frame.chunk_id not in (None, chunk):
-                        raise ValueError("Frame belongs to another chunk")
-                    count += 1
-                    prepared, duplicates, capped = select_crops(frame, detections, settings)
-                    recognized = recognize_crops(prepared, recognizer, settings)
-                    accepted = [
-                        (crop, result)
-                        for crop, result in recognized
-                        if useful_text(result, settings["crops"]["confidence_floor"])
-                    ]
-                    frame_id = insert(
-                        db,
-                        "sampled_frames",
-                        scan_chunk_id=chunk,
-                        video_scan_id=scan_id,
-                        sample_key=frame.sample_key,
-                        timestamp_s=frame.timestamp_s,
-                        source_width=frame.source_width,
-                        source_height=frame.source_height,
-                        working_width=frame.image.width,
-                        working_height=frame.image.height,
-                        raw_detection_count=len(detections),
-                        duplicate_detection_count=duplicates,
-                        recognition_count=len(recognized),
-                        accepted_observation_count=len(accepted),
-                        cap_dropped_count=capped,
-                    )
-                    db.execute(
-                        "UPDATE video_scans SET input_width=?,input_height=? WHERE id=?",
-                        (frame.source_width, frame.source_height, scan_id),
-                    )
-                    frame_path = None
-                    if settings["evidence"]["full_frames"] and accepted:
-                        frame_path = (folder / f"{frame_id}-frame.jpg").as_posix()
-                        frame.image.save(store.root / frame_path, quality=85)
-                        db.execute(
-                            "UPDATE sampled_frames SET full_frame_path=? WHERE id=?",
-                            (frame_path, frame_id),
-                        )
-                    matches, closed = tracker.associate(frame, accepted)
-                    for identity, reason in closed.items():
-                        db.execute(
-                            "UPDATE text_clusters SET close_reason=? WHERE id=?", (reason, identity)
-                        )
-                    for index, (crop, result) in enumerate(accepted):
-                        detection = crop.detection
-                        polygon = encode_polygon(detection.polygon)
-                        region, width, height = geometry_metadata(
-                            detection.polygon, frame.source_width, frame.source_height
-                        )
-                        observation = insert(
-                            db,
-                            "observations",
-                            video_scan_id=scan_id,
-                            sampled_frame_id=frame_id,
-                            polygon_blob=polygon,
-                            geometry_key=geometry_key(detection.polygon) + ":" + detection.identity,
-                            detection_identity=detection.identity,
-                            crop_transform_json=json.dumps(crop.crop_to_source),
-                            screen_region=region,
-                            normalized_width=width,
-                            normalized_height=height,
-                            detector_confidence=detection.confidence,
-                            raw_text=result.text,
-                            normalized_text=normalize(result.text),
-                            compact_text=compact(result.text),
-                            ocr_confidence=result.confidence,
-                        )
-                        crop_path = (folder / f"{observation}-row.png").as_posix()
-                        crop.image.save(store.root / crop_path)
-                        db.execute(
-                            "UPDATE observations SET crop_path=? WHERE id=?",
-                            (crop_path, observation),
-                        )
-                        match = matches.get(index)
-                        score = match[1] if match else 1
-                        if match:
-                            cluster = match[0]
-                            db.execute(
-                                "UPDATE text_clusters SET end_s=?,support_count=support_count+1 WHERE id=?",
-                                (frame.timestamp_s, cluster),
-                            )
-                            best = db.execute(
-                                "SELECT best_confidence FROM text_clusters WHERE id=?", (cluster,)
-                            ).fetchone()[0]
-                            if result.confidence is not None and (
-                                best is None or result.confidence > best
-                            ):
-                                db.execute(
-                                    """UPDATE text_clusters SET representative_observation_id=?,
-                                    representative_polygon_blob=?,screen_region=?,canonical_text=?,
-                                    normalized_text=?,compact_text=?,best_confidence=?,evidence_path=?,
-                                    frame_path=?,evidence_timestamp_s=? WHERE id=?""",
-                                    (
-                                        observation,
-                                        polygon,
-                                        region,
-                                        result.text,
-                                        normalize(result.text),
-                                        compact(result.text),
-                                        result.confidence,
-                                        crop_path,
-                                        frame_path,
-                                        frame.timestamp_s,
-                                        cluster,
-                                    ),
-                                )
-                        else:
-                            cluster = insert(
-                                db,
-                                "text_clusters",
-                                video_scan_id=scan_id,
-                                video_id=video["id"],
-                                start_s=frame.timestamp_s,
-                                end_s=frame.timestamp_s,
-                                representative_observation_id=observation,
-                                representative_polygon_blob=polygon,
-                                screen_region=region,
-                                canonical_text=result.text,
-                                normalized_text=normalize(result.text),
-                                compact_text=compact(result.text),
-                                best_confidence=result.confidence,
-                                support_count=1,
-                                model_version=recognizer.metadata.version,
-                                normalization_version=NORMALIZATION_VERSION,
-                                evidence_path=crop_path,
-                                frame_path=frame_path,
-                                evidence_timestamp_s=frame.timestamp_s,
-                            )
-                        track = tracker.observe(cluster, frame, crop, result)
-                        db.execute(
-                            "UPDATE text_clusters SET motion_summary_json=? WHERE id=?",
-                            (json.dumps(track.motion()), cluster),
-                        )
-                        insert(
-                            db,
-                            "cluster_observations",
-                            video_scan_id=scan_id,
-                            cluster_id=cluster,
-                            observation_id=observation,
-                            support_score=score,
-                        )
-                    db.execute(
-                        "UPDATE scan_chunks SET last_processed_timestamp_s=? WHERE id=?",
-                        (frame.timestamp_s, chunk),
-                    )
-            for identity in tracker.active:
-                db.execute(
-                    "UPDATE text_clusters SET close_reason='end_of_scan' WHERE id=?", (identity,)
-                )
-            if not count:
-                raise RuntimeError("No video frames decoded")
-            db.execute(
-                "UPDATE scan_chunks SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?",
-                (chunk,),
-            )
-            db.execute(
-                "UPDATE chunk_attempts SET completed_at=CURRENT_TIMESTAMP WHERE id=?", (attempt,)
-            )
-            db.execute(
-                "UPDATE videos SET status='scanned',error=NULL,scanned_at=CURRENT_TIMESTAMP WHERE id=?",
-                (video["id"],),
-            )
-        store.finish_scan(scan_id)
+        if frame_source is not None:
+            duration = video["duration_s"] or settings["sampling"]["chunk_seconds"]
+            path, dimensions = None, None
+        elif local:
+            path = video["local_path"]
+            if video["duration_s"]:
+                dimensions, duration = None, video["duration_s"]
+            else:
+                dimensions, duration = probe(path)
+        else:
+            if video["source_url"].startswith("file:"):
+                raise FileNotFoundError(video["local_path"])
+            for retry in range(settings["acquisition"]["attempts"]):
+                try:
+                    path, duration, dimensions, _, headers = resolve_stream(video)
+                    break
+                except Exception:
+                    if retry + 1 == settings["acquisition"]["attempts"]:
+                        raise
+                    time.sleep(min(settings["acquisition"]["max_backoff_s"],
+                                   settings["acquisition"]["backoff_s"] * 2**retry))
+        if not math.isfinite(duration) or duration <= 0:
+            raise ValueError("A finite VOD duration is required for bounded scanning")
     except BaseException as exc:
         store.finish_scan(scan_id, str(exc))
+        raise
+    folder = Path("report/assets") / (
+        hashlib.sha256(video["id"].encode()).hexdigest()[:16] + "-" + uuid.uuid4().hex)
+    store.prune_orphan_evidence()
+    tracker = TextTracker.restore(settings["clustering"], store, scan_id)
+    source_used = False
+    try:
+        for sequence, start, end in _chunks(duration, settings["sampling"]["chunk_seconds"]):
+            with store.transaction() as db:
+                db.execute(
+                    """INSERT INTO scan_chunks(video_scan_id,sequence_no,chunk_start_s,chunk_end_s,
+                    download_mode) VALUES (?,?,?,?,?) ON CONFLICT(video_scan_id,sequence_no) DO NOTHING""",
+                    (scan_id, sequence, start, end, "fixture" if frame_source is not None
+                     else "local-section" if local else "remote-section"),
+                )
+            chunk = store.rows("SELECT * FROM scan_chunks WHERE video_scan_id=? AND sequence_no=?",
+                               (scan_id, sequence))[0]
+            if (chunk["chunk_start_s"] != start or chunk["chunk_end_s"] != end):
+                raise ValueError("Source duration changed during resume; start a new scan")
+            if chunk["status"] == "completed":
+                continue
+            attempts = settings["acquisition"]["attempts"]
+            for retry in range(attempts):
+                overlap = settings["acquisition"]["overlap_s"]
+                source_start = max(0, math.floor((start - overlap) * settings["sampling"]["fps"])
+                                   / settings["sampling"]["fps"])
+                attempt = store.record_attempt(chunk["id"], requested_start_s=source_start,
+                                               requested_end_s=end)
+                attempt_started = time.monotonic()
+                with store.transaction() as db:
+                    db.execute("UPDATE scan_chunks SET status='running',error=NULL WHERE id=?",
+                               (chunk["id"],))
+                try:
+                    if frame_source is not None:
+                        if source_used:
+                            raise ValueError("A fixture source cannot be replayed after failure")
+                        source = frame_source
+                        source_used = True
+                    else:
+                        source = sample_frames(path, settings["sampling"]["fps"], source_start,
+                                               max_height=settings["sampling"]["max_height"],
+                                               chunk_id=chunk["id"], end=end, dimensions=dimensions,
+                                               http_headers=headers)
+                    pending, pending_bytes, first_time, seen = [], 0, None, 0
+                    with frame_iterator(source) as frames:
+                        while batch := list(_take(frames, settings["detector"]["batch_size"])):
+                            if any(not isinstance(frame, Frame) for frame in batch):
+                                raise TypeError("Detection ingestion requires source-aware Frame records")
+                            proposals = detect_frames(detector, batch)
+                            for frame, detections in zip(batch, proposals):
+                                if frame.timestamp_s < start - 1e-8 or frame.timestamp_s >= end - 1e-8:
+                                    continue
+                                seen += 1
+                                if frame.timestamp_s <= tracker.last_time:
+                                    continue
+                                pending.append(_prepare_frame(frame, detections, recognizer, settings))
+                                pending_bytes += frame.image.width * frame.image.height * 3
+                                first_time = frame.timestamp_s if first_time is None else first_time
+                                limits = settings["persistence"]
+                                if (frame.timestamp_s - first_time >= limits["commit_interval_s"]
+                                        or len(pending) >= limits["max_rows"]
+                                        or pending_bytes >= limits["max_bytes"]):
+                                    _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
+                                                  tracker, pending, recognizer, settings)
+                                    pending, pending_bytes, first_time = [], 0, None
+                    if pending:
+                        _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
+                                      tracker, pending, recognizer, settings)
+                    if not seen and not store.rows("SELECT id FROM sampled_frames WHERE scan_chunk_id=? LIMIT 1",
+                                                   (chunk["id"],)):
+                        raise RuntimeError("No video frames decoded")
+                    with store.transaction() as db:
+                        db.execute("UPDATE scan_chunks SET status='completed',error=NULL,"
+                                   "completed_at=CURRENT_TIMESTAMP WHERE id=?", (chunk["id"],))
+                        db.execute("UPDATE chunk_attempts SET completed_at=CURRENT_TIMESTAMP,"
+                                   "elapsed_s=? WHERE id=?", (time.monotonic() - attempt_started,
+                                                                attempt))
+                    break
+                except Exception as exc:
+                    with store.transaction() as db:
+                        db.execute("UPDATE scan_chunks SET status='failed',error=? WHERE id=?",
+                                   (str(exc), chunk["id"]))
+                        db.execute("UPDATE chunk_attempts SET error=?,completed_at=CURRENT_TIMESTAMP,"
+                                   "elapsed_s=? WHERE id=?",
+                                   (str(exc), time.monotonic() - attempt_started, attempt))
+                    tracker = TextTracker.restore(settings["clustering"], store, scan_id)
+                    if retry + 1 == attempts or frame_source is not None:
+                        raise
+                    time.sleep(min(settings["acquisition"]["max_backoff_s"],
+                                   settings["acquisition"]["backoff_s"] * 2**retry))
+        chunks = store.rows("SELECT status FROM scan_chunks WHERE video_scan_id=?",
+                            (scan_id,))
+        if len(chunks) != math.ceil(duration / settings["sampling"]["chunk_seconds"]) or any(
+            row["status"] != "completed" for row in chunks
+        ):
+            raise ValueError("Source duration changed during resume; chunks are incomplete")
         with store.transaction() as db:
-            db.execute(
-                "UPDATE scan_chunks SET status='failed',error=? WHERE id=?", (str(exc), chunk)
-            )
-            db.execute(
-                "UPDATE chunk_attempts SET error=?,completed_at=CURRENT_TIMESTAMP WHERE id=?",
-                (str(exc), attempt),
-            )
-        for path in absolute.iterdir():
-            path.unlink()
-        absolute.rmdir()
+            for identity in tracker.active:
+                db.execute("UPDATE text_clusters SET close_reason='end_of_scan' WHERE id=?",
+                           (identity,))
+            db.execute("UPDATE videos SET status='scanned',error=NULL,scanned_at=CURRENT_TIMESTAMP "
+                       "WHERE id=?", (video["id"],))
+        store.finish_scan(scan_id)
+        store.prune_orphan_evidence()
+    except BaseException as exc:
+        store.finish_scan(scan_id, str(exc))
         raise
     return True
+
+
+def _take(iterator, count):
+    from itertools import islice
+
+    return islice(iterator, count)
