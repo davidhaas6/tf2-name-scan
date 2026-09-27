@@ -2,7 +2,9 @@
 
 This is a lightweight task tracker for the next practical checks, not a complete implementation plan.
 
-- [x] **Profile one representative scan.** A user-supplied local scan profile recorded 106.848 s wall time for 11.485833 s of video (9.303× real-time factor), sampled at 1 fps: 11 frames and 298 crops. Source was 3440×1440, working resolution 1720×720. Hardware reported AMD64 Family 25 Model 33 CPU, 12 logical CPUs, Windows build 26200; detector and recognizer used CPU. Effective configuration is in the profile JSON supplied with the run: Paddle PP-OCRv6 small detector/recognizer, native detector resize, recognizer batch size 32, representative evidence with compaction. Stage times: decoding 0.438 s, detection 19.212 s, crop preparation 0.402 s, recognition 66.834 s, persistence/evidence 12.476 s, other 7.485 s. Recognition is the largest measured bottleneck (62.6% of scan wall time). Model setup took another 12.88 s outside scan wall time. This short clip may include warmup effects; confirm on a longer representative clip before extrapolating throughput.
+- [x] **Profile one representative scan.** Full-frame and top-right runs, plus detailed persistence timings, are recorded in [scan profiling findings](scan-profiling-findings.md).
+
+- [ ] **Complete the full-frame versus top-right comparison.** Timing is documented in [scan profiling findings](scan-profiling-findings.md); manually compare player-name coverage before drawing an accuracy conclusion. Investigate the unmeasured startup/final cleanup portion of `other` and confirm persistence behavior on a longer scan if performance work proceeds.
 
 - [ ] **R12: Build a small verified video set.** Manually label visible username occurrences and negative regions in one short, exhaustively checked video window; record timestamps, exact names, and stable occurrence IDs. Add a second window from a different HUD or compression setting, keeping each source separate and marking any unlabelled regions as unknown rather than negative.
 

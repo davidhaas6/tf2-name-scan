@@ -34,6 +34,25 @@ def probe(path):
     return stream, float(data.get("format", {}).get("duration", 0))
 
 
+def detector_frame(frame, region="full"):
+    """Crop detector input while retaining source-coordinate mapping."""
+    if region == "full":
+        return frame
+    if region != "top_right":
+        raise ValueError(f"Unknown detector region: {region}")
+    from dataclasses import replace
+
+    width, height = frame.image.size
+    left = width // 2
+    bottom = (height + 1) // 2
+    return replace(
+        frame,
+        image=frame.image.crop((left, 0, width, bottom)),
+        source_region=(frame.source_width * left / width, 0,
+                       frame.source_width, frame.source_height * bottom / height),
+    )
+
+
 def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=None,
                   end=None, dimensions=None, http_headers=None):
     if not math.isfinite(fps) or not math.isfinite(start) or fps <= 0 or start < 0:

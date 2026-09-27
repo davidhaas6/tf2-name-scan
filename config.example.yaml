@@ -4,7 +4,7 @@ sources: []
 pipeline: detection
 # Example search name: replace it, use `scan --name NAME`, or search later with `query --name NAME`.
 query: {target_name: HumanWorm, aliases: []}
-sampling: {fps: 1, chunk_seconds: 600, max_height: 720}
+sampling: {fps: 1, chunk_seconds: 600, max_height: 720, region: top_right}
 detector: {backend: paddle, name: PP-OCRv6-small-det, weights: null, device: cpu,
            batch_size: 1, confidence: 0.3, resize: native, limit_side_len: 960}
 recognizer: {backend: paddle, name: PP-OCRv6-small-rec, weights: null, device: cpu,

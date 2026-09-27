@@ -11,6 +11,7 @@ wheels/
 
 # Local corpus, media, model weights and machine configuration
 output/
+input/
 vendor/
 models/
 config.yaml

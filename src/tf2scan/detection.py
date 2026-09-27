@@ -19,7 +19,7 @@ class TextDetector(Protocol):
 
 
 def detector_input(frame, resize="native", limit_side_len=960):
-    """Return inference image and exact tensor-to-source x/y scale."""
+    """Return inference image and tensor-to-source scale; offset is on Frame."""
     image = frame.image
     if resize == "min":
         if not isinstance(limit_side_len, int) or limit_side_len <= 0:
@@ -30,14 +30,18 @@ def detector_input(frame, resize="native", limit_side_len=960):
         )
     elif resize != "native":
         raise ValueError("Unknown detector resize policy")
-    return image, (frame.source_width / image.width, frame.source_height / image.height)
+    sx, sy = frame.working_to_source
+    return image, (sx * frame.image.width / image.width,
+                   sy * frame.image.height / image.height)
 
 
-def to_source_detection(identity, polygon, confidence, tensor_to_source):
+def to_source_detection(identity, polygon, confidence, tensor_to_source, source_offset=(0, 0)):
     if not math.isfinite(confidence) or not 0 <= confidence <= 1:
         raise ValueError("Detector confidence must be finite and within [0,1]")
     sx, sy = tensor_to_source
-    return Detection(str(identity), tuple((x * sx, y * sy) for x, y in polygon), confidence)
+    ox, oy = source_offset
+    return Detection(str(identity), tuple((ox + x * sx, oy + y * sy) for x, y in polygon),
+                     confidence)
 
 
 class FakeDetector:

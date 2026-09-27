@@ -74,7 +74,8 @@ class PaddleDetector:
                 raise RuntimeError("Paddle detector polygon/score count mismatch")
             output.append(
                 [
-                    to_source_detection(i, p, float(s), frame.working_to_source)
+                    to_source_detection(i, p, float(s), frame.working_to_source,
+                                        frame.source_offset)
                     for i, (p, s) in enumerate(zip(polygons, scores))
                 ]
             )

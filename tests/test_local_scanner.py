@@ -11,6 +11,7 @@ from tf2scan.config import Config
 from tf2scan.contracts import AdapterMetadata
 from tf2scan.crops import prepare_crop
 from tf2scan.detection import FakeDetector
+from tf2scan.frames import detector_frame
 from tf2scan.ingestion import ingest
 from tf2scan.paddle_backend import PaddleDetector, PaddleRecognizer
 from tf2scan.query import run_query
@@ -240,6 +241,7 @@ def test_paddle_order_mapping_color_and_cardinality(monkeypatch):
 
     detector = PaddleDetector(SimpleNamespace(predict=detect), merge_settings({})["detector"])
     assert detector.detect([frame(source=(640, 360))])[0][0].polygon[0] == (40, 60)
+    assert detector.detect([detector_frame(frame(source=(640, 360)), "top_right")])[0][0].polygon[0] == (360, 60)
     assert calls[0]["limit_side_len"] == 320 and calls[0]["limit_type"] == "max"
     engine = SimpleNamespace(
         predict=lambda images, **kwargs: [

@@ -13,6 +13,13 @@ Copy-Item config.example.yaml config.yaml
 
 The first scan downloads the OCR models. The example config puts results in `output/` and has an example search name; replace it in `config.yaml` or supply `--name` when scanning.
 
+The supplied configuration uses `sampling.region: top_right`: only the top-right
+quarter of each sampled frame is sent to the detector. The scanner keeps source
+coordinates for observations and uses the original sampled frame for evidence.
+This can reduce detection and recognition work, but names elsewhere in the frame
+will be missed. Set `sampling.region: full` to scan the whole frame. Changing the
+region requires `scan --reprocess` for videos already scanned.
+
 ## Scan a local video
 
 To profile one cached local video with the detection pipeline, run:
@@ -24,13 +31,23 @@ uv run tf2scan scan --local "C:\path\to\cached-video.mp4" --perf-output "output\
 The flag is optional. Add `--reprocess` if that video was already scanned, and
 `--fps N` to override the configured sampling rate. The JSON records scan wall
 time, video duration, real-time factor (`wall time / video duration`), source
-and working resolution, CPU/platform, frame and crop counts, effective scan
+working and detector-input resolution, CPU/platform, frame and crop counts, effective scan
 settings, model setup time, and stage times. Stage times cover decoding,
 detection, crop preparation, recognition, and persistence/evidence. `other`
 includes scan bookkeeping, final cleanup, and time outside those measured
 sections. `largest_stage` names the largest measured category. Model setup is
 reported separately and is excluded from the scan real-time factor. Profiling
 currently applies to the detection pipeline and one video per command.
+
+`persistence_detail_s` breaks the batch persistence timer into the SQLite/tracking
+transaction (including image saves), image saves, evidence compaction, and the
+orphan sweep's database-reference lookup and file walk. The `*_other` values
+subtract nested timings so they do not double-count. `persistence_counts`
+records batch commits, compaction/sweep calls, images saved, and asset files
+checked. These details cover batch commits; scan startup and final cleanup
+remain in the top-level `other` stage.
+`persistence_batches` gives the same timers and file count for each batch, so
+you can see whether the sweep cost repeats as the corpus grows.
 
 ```powershell
 uv run tf2scan scan --local "C:\videos\game.mp4" --name AnotherPlayer

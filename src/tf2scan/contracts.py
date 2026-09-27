@@ -29,6 +29,7 @@ class Frame:
     source_height: int
     image: Image.Image
     chunk_id: int | None = None
+    source_region: tuple[float, float, float, float] | None = None
 
     def __post_init__(self):
         import math
@@ -42,6 +43,11 @@ class Frame:
             raise ValueError("Source dimensions must be positive integers")
         if not self.sample_key:
             raise ValueError("Frame sample identity is required")
+        if self.source_region is not None:
+            x0, y0, x1, y1 = self.source_region
+            if not (0 <= x0 < x1 <= self.source_width and
+                    0 <= y0 < y1 <= self.source_height):
+                raise ValueError("Frame source region must fit inside the source")
 
     def __iter__(self):
         # Transitional timestamp/image unpacking for legacy scanner and calibration.
@@ -52,7 +58,14 @@ class Frame:
 
     @property
     def working_to_source(self):
-        return (self.source_width / self.image.width, self.source_height / self.image.height)
+        if self.source_region is None:
+            return (self.source_width / self.image.width, self.source_height / self.image.height)
+        x0, y0, x1, y1 = self.source_region
+        return ((x1 - x0) / self.image.width, (y1 - y0) / self.image.height)
+
+    @property
+    def source_offset(self):
+        return (0, 0) if self.source_region is None else self.source_region[:2]
 
 
 @dataclass(frozen=True)

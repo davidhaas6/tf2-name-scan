@@ -12,10 +12,13 @@ class ScanProfile:
     def __init__(self):
         self.started = time.perf_counter()
         self.seconds = defaultdict(float)
+        self.counts = defaultdict(int)
+        self.persistence_batches = []
         self.frames = 0
         self.crops = 0
         self.source_resolution = None
         self.working_resolution = None
+        self.detector_resolution = None
 
     @contextmanager
     def measure(self, stage):
@@ -30,7 +33,21 @@ class ScanProfile:
         stages = {key: round(self.seconds[key], 3) for key in
                   ("decoding", "detection", "crop_preparation", "recognition",
                    "persistence_evidence")}
-        stages["other"] = round(max(0, wall - sum(self.seconds.values())), 3)
+        stages["other"] = round(max(0, wall - sum(self.seconds[key] for key in stages)), 3)
+        transaction = self.seconds["persistence_transaction"]
+        image_save = self.seconds["evidence_image_save"]
+        compaction = self.seconds["evidence_compaction"]
+        reference_lookup = self.seconds["evidence_reference_lookup"]
+        file_walk = self.seconds["evidence_file_walk"]
+        detail = {
+            "transaction_total": round(transaction, 3),
+            "image_save": round(image_save, 3),
+            "transaction_other": round(max(0, transaction - image_save), 3),
+            "compaction_total": round(compaction, 3),
+            "reference_lookup": round(reference_lookup, 3),
+            "file_walk": round(file_walk, 3),
+            "compaction_other": round(max(0, compaction - reference_lookup - file_walk), 3),
+        }
         bottleneck = max(stages, key=stages.get)
         duration = video["duration_s"]
         return {
@@ -39,9 +56,13 @@ class ScanProfile:
             "model_setup_s": round(model_setup_s, 3), "frames": self.frames,
             "crops": self.crops, "source_resolution": self.source_resolution,
             "working_resolution": self.working_resolution,
+            "detector_resolution": self.detector_resolution,
             "hardware": {"cpu": platform.processor(), "logical_cpus": os.cpu_count(),
                          "platform": platform.platform()},
             "stages_s": stages, "largest_stage": bottleneck, "settings": settings,
+            "persistence_detail_s": detail,
+            "persistence_counts": dict(self.counts),
+            "persistence_batches": self.persistence_batches,
         }
 
 

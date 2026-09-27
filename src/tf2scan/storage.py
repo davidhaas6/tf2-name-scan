@@ -2,6 +2,7 @@
 
 import re
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -208,12 +209,14 @@ class Store(LineageStore):
                         path.unlink(missing_ok=True)
         self.prune_orphan_evidence()
 
-    def compact_evidence(self, scan_id, max_candidates=4, aliases=()):
+    def compact_evidence(self, scan_id, max_candidates=4, aliases=(), profile=None):
         """Keep actual representative and bounded query-relevant observation crops."""
         from .matching import alias_score
 
         clusters = self.rows("SELECT id,representative_observation_id FROM text_clusters "
                              "WHERE video_scan_id=?", (scan_id,))
+        if profile:
+            profile.counts["compaction_clusters_examined"] += len(clusters)
         keep = set()
         for cluster in clusters:
             keep.add(cluster["representative_observation_id"])
@@ -231,6 +234,8 @@ class Store(LineageStore):
         discard = self.rows(
             "SELECT id,crop_path FROM observations WHERE video_scan_id=? AND crop_path IS NOT NULL",
             (scan_id,))
+        if profile:
+            profile.counts["compaction_crops_examined"] += len(discard)
         with self.transaction() as db:
             for row in discard:
                 if row["id"] not in keep:
@@ -240,9 +245,9 @@ class Store(LineageStore):
                 AND id NOT IN (SELECT o.sampled_frame_id FROM observations o
                 JOIN text_clusters c ON c.representative_observation_id=o.id
                 WHERE c.video_scan_id=?)""", (scan_id, scan_id))
-        self.prune_orphan_evidence()
+        self.prune_orphan_evidence(profile=profile)
 
-    def prune_orphan_evidence(self):
+    def prune_orphan_evidence(self, profile=None):
         """Recover files left by a killed process; only touch scanner-owned names.
 
         Call after a committed batch or report, never while a batch is writing files.
@@ -251,6 +256,9 @@ class Store(LineageStore):
         assets = (self.root / "report/assets").resolve()
         if not assets.is_dir() or not assets.is_relative_to(self.root.resolve()):
             return
+        reference_started = time.perf_counter() if profile else None
+        if profile:
+            profile.counts["orphan_sweep_calls"] += 1
         referenced = set()
         for row in self.db.execute(
             "SELECT evidence_path FROM text_clusters UNION SELECT frame_path FROM text_clusters "
@@ -258,12 +266,18 @@ class Store(LineageStore):
             "UNION SELECT full_frame_path FROM sampled_frames"
         ):
             referenced.update((self.root / value).resolve() for value in row if value)
+        if profile:
+            profile.seconds["evidence_reference_lookup"] += time.perf_counter() - reference_started
+            profile.counts["referenced_paths_examined"] += len(referenced)
+        walk_started = time.perf_counter() if profile else None
         for folder in assets.iterdir():
             if not re.fullmatch(r"[0-9a-f]{16}-[0-9a-f]{32}", folder.name):
                 continue
             if folder.is_symlink() or not folder.is_dir():
                 continue
             for path in folder.iterdir():
+                if profile:
+                    profile.counts["asset_files_checked"] += 1
                 if (
                     re.fullmatch(r"\d+-(row\.png|frame\.jpg)(\.[0-9a-f]{32}\.tmp)?",
                                  path.name)
@@ -273,5 +287,9 @@ class Store(LineageStore):
                     and path.resolve() not in referenced
                 ):
                     path.unlink()
+                    if profile:
+                        profile.counts["orphan_files_deleted"] += 1
             if not any(folder.iterdir()):
                 folder.rmdir()
+        if profile:
+            profile.seconds["evidence_file_walk"] += time.perf_counter() - walk_started

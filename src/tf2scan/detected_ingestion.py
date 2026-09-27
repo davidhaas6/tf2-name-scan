@@ -12,7 +12,7 @@ from .contracts import Frame
 from .crops import geometry_metadata
 from .detection import detect_frames
 from .download import resolve_stream
-from .frames import frame_iterator, probe, sample_frames
+from .frames import detector_frame, frame_iterator, probe, sample_frames
 from .geometry import encode_polygon, geometry_key
 from .lineage import insert
 from .matching import NORMALIZATION_VERSION, alias_score, compact, normalize
@@ -70,9 +70,25 @@ def _save_image(image, path, **options):
         temporary.unlink(missing_ok=True)
 
 
+def _save_profiled_image(image, path, profile=None, **options):
+    if profile:
+        with profile.measure("evidence_image_save"):
+            _save_image(image, path, **options)
+        profile.counts["images_saved"] += 1
+    else:
+        _save_image(image, path, **options)
+
+
 def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
-                  recognizer, settings, aliases=()):
+                  recognizer, settings, aliases=(), profile=None):
     """Inference finishes before entering a write transaction; watermark commits last."""
+    transaction_started = time.perf_counter() if profile else None
+    if profile:
+        profile.counts["batch_commits"] += 1
+        keys = ("persistence_transaction", "evidence_image_save", "evidence_compaction",
+                "evidence_reference_lookup", "evidence_file_walk")
+        before = {key: profile.seconds[key] for key in keys}
+        files_before = profile.counts["asset_files_checked"]
     with store.transaction() as db:
         for frame, raw_count, duplicates, capped, recognition_count, accepted in entries:
             if frame.chunk_id not in (None, chunk_id):
@@ -93,7 +109,7 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
             frame_path = None
             if settings["evidence"]["full_frames"] and accepted:
                 frame_path = (folder / f"{frame_id}-frame.jpg").as_posix()
-                _save_image(frame.image, store.root / frame_path, quality=85)
+                _save_profiled_image(frame.image, store.root / frame_path, profile, quality=85)
                 db.execute("UPDATE sampled_frames SET full_frame_path=? WHERE id=?",
                            (frame_path, frame_id))
             matches, closed = tracker.associate(frame, accepted)
@@ -133,7 +149,7 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
                 candidate = any(alias_score(result.text, alias) >= 0.65 for alias in aliases)
                 if representative or candidate:
                     crop_path = (folder / f"{observation}-row.png").as_posix()
-                    _save_image(crop.image, store.root / crop_path)
+                    _save_profiled_image(crop.image, store.root / crop_path, profile)
                     db.execute("UPDATE observations SET crop_path=? WHERE id=?",
                                (crop_path, observation))
                 if match:
@@ -166,8 +182,32 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
                        cluster_id=cluster, observation_id=observation, support_score=score)
             db.execute("UPDATE scan_chunks SET last_processed_timestamp_s=? WHERE id=?",
                        (frame.timestamp_s, chunk_id))
+    if profile:
+        profile.seconds["persistence_transaction"] += time.perf_counter() - transaction_started
     if settings["evidence"]["compact"]:
-        store.compact_evidence(scan_id, settings["evidence"]["max_candidates"], aliases)
+        if profile:
+            profile.counts["compaction_calls"] += 1
+            with profile.measure("evidence_compaction"):
+                store.compact_evidence(scan_id, settings["evidence"]["max_candidates"],
+                                       aliases, profile=profile)
+        else:
+            store.compact_evidence(scan_id, settings["evidence"]["max_candidates"], aliases)
+    if profile:
+        profile.persistence_batches.append({
+            "frames": len(entries),
+            "accepted_observations": sum(len(entry[-1]) for entry in entries),
+            "transaction_s": round(profile.seconds["persistence_transaction"]
+                                   - before["persistence_transaction"], 3),
+            "image_save_s": round(profile.seconds["evidence_image_save"]
+                                  - before["evidence_image_save"], 3),
+            "compaction_s": round(profile.seconds["evidence_compaction"]
+                                  - before["evidence_compaction"], 3),
+            "reference_lookup_s": round(profile.seconds["evidence_reference_lookup"]
+                                        - before["evidence_reference_lookup"], 3),
+            "file_walk_s": round(profile.seconds["evidence_file_walk"]
+                                 - before["evidence_file_walk"], 3),
+            "asset_files_checked": profile.counts["asset_files_checked"] - files_before,
+        })
 
 
 def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
@@ -279,9 +319,19 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
                                 raise TypeError("Detection ingestion requires source-aware Frame records")
                             if profile:
                                 with profile.measure("detection"):
-                                    proposals = detect_frames(detector, batch)
+                                    detector_batch = [
+                                        detector_frame(frame, settings["sampling"]["region"])
+                                        for frame in batch
+                                    ]
+                                    if profile.detector_resolution is None:
+                                        profile.detector_resolution = list(detector_batch[0].image.size)
+                                    proposals = detect_frames(detector, detector_batch)
                             else:
-                                proposals = detect_frames(detector, batch)
+                                detector_batch = [
+                                    detector_frame(frame, settings["sampling"]["region"])
+                                    for frame in batch
+                                ]
+                                proposals = detect_frames(detector, detector_batch)
                             for frame, detections in zip(batch, proposals):
                                 if frame.timestamp_s < start - 1e-8 or frame.timestamp_s >= end - 1e-8:
                                     continue
@@ -307,7 +357,7 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
                                         with profile.measure("persistence_evidence"):
                                             _commit_batch(store, scan_id, chunk["id"], video["id"],
                                                           folder, tracker, pending, recognizer,
-                                                          settings, aliases)
+                                                          settings, aliases, profile)
                                     else:
                                         _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
                                                       tracker, pending, recognizer, settings, aliases)
@@ -316,7 +366,8 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
                         if profile:
                             with profile.measure("persistence_evidence"):
                                 _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
-                                              tracker, pending, recognizer, settings, aliases)
+                                              tracker, pending, recognizer, settings, aliases,
+                                              profile)
                         else:
                             _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
                                           tracker, pending, recognizer, settings, aliases)

@@ -8,7 +8,7 @@ import math
 from .matching import NORMALIZATION_VERSION
 
 DEFAULTS = {
-    "sampling": {"fps": 1, "chunk_seconds": 600, "max_height": 720},
+    "sampling": {"fps": 1, "chunk_seconds": 600, "max_height": 720, "region": "full"},
     "detector": {
         "backend": "paddle",
         "name": "PP-OCRv6-small-det",
@@ -146,6 +146,8 @@ def validate(settings):
         raise ValueError("Unsupported recognizer backend")
     if settings["detector"]["resize"] not in {"native", "min"}:
         raise ValueError("detector.resize must be native or min")
+    if settings["sampling"]["region"] not in {"full", "top_right"}:
+        raise ValueError("sampling.region must be full or top_right")
     a = settings["acquisition"]
     if a["streams_per_host"] != 1 or a["max_backoff_s"] < a["backoff_s"]:
         raise ValueError("Invalid acquisition concurrency/backoff")

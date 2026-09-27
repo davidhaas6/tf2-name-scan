@@ -11,7 +11,7 @@ from tf2scan.contracts import AdapterMetadata, Detection, Frame
 from tf2scan.crops import canonicalize, geometry_metadata, prepare_crop
 from tf2scan.detected_ingestion import recognize_frame
 from tf2scan.detection import FakeDetector, detect_frames, detector_input, to_source_detection
-from tf2scan.frames import sample_frames
+from tf2scan.frames import detector_frame, sample_frames
 from tf2scan.geometry import decode_polygon
 from tf2scan.ingestion import ingest
 from tf2scan.recognize import Recognition
@@ -111,6 +111,40 @@ def test_region_metadata():
         12 / 180,
     )
     assert geometry_metadata(box(x=230, y=140, width=60).polygon, 300, 180)[0] == "bottom_right"
+
+
+def test_top_right_detector_crop_preserves_source_coordinates():
+    original = frame(size=(320, 180), source=(640, 360))
+    cropped = detector_frame(original, "top_right")
+    assert cropped.image.size == (160, 90)
+    assert cropped.source_region == (320, 0, 640, 180)
+    assert cropped.working_to_source == (2, 2)
+    assert detector_input(cropped)[1] == (2, 2)
+    assert to_source_detection("name", ((0, 0), (40, 0), (40, 10), (0, 10)),
+                               0.9, cropped.working_to_source,
+                               cropped.source_offset).polygon == (
+                                   (320, 0), (400, 0), (400, 20), (320, 20))
+    assert detector_frame(original) is original
+
+
+def test_top_right_crop_is_applied_before_detection(tmp_path):
+    config = Config(tmp_path / "config.yaml", {"sampling": {"region": "top_right"}})
+    detector = FakeDetector({"0": [box(x=220, y=30)]})
+    seen = []
+    original_detect = detector.detect
+
+    def detect(frames):
+        seen.extend((item.image.size, item.source_offset) for item in frames)
+        return original_detect(frames)
+
+    detector.detect = detect
+    with Store(config.root) as store:
+        store.upsert_video({"id": "v", "title": "video", "source_url": "url"})
+        assert ingest(store, config, store.video("v"), Recognizer(), detector=detector,
+                      frame_source=[frame(size=(320, 180))])
+        assert seen == [((160, 90), (160.0, 0))]
+        observation = store.rows("SELECT polygon_blob FROM observations")[0]
+        assert decode_polygon(observation["polygon_blob"]) == box(x=220, y=30).polygon
 
 
 def test_order_identity_and_batch_cardinality():
