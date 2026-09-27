@@ -1,6 +1,7 @@
 import argparse
 import logging
 import sys
+import time
 from contextlib import ExitStack, closing
 from pathlib import Path
 
@@ -10,9 +11,11 @@ from .frames import sample_frames
 from .hud import annotate
 from .indexing import add_local, index_sources
 from .ingestion import ingest
+from .performance import ScanProfile, write_profile
 from .query import run_query
 from .recognize import OpenOCRRecognizer
 from .report import export_report
+from .settings import merge_settings
 from .storage import Store
 from .ytdlp_options import with_node
 
@@ -46,6 +49,8 @@ def parser():
             sub.add_argument("--fps", type=float)
             sub.add_argument("--chunk-seconds", type=float)
             sub.add_argument("--reprocess", action="store_true")
+            sub.add_argument("--perf-output", type=Path,
+                             help="Write per-stage timing JSON for one detected video")
             sub.add_argument("--name", help="Name to search after scanning; overrides query.target_name")
             sub.add_argument("--alias", action="append", default=[])
         elif name == "query":
@@ -92,6 +97,9 @@ def execute(args):
             print(f"Indexed {count} videos; {failed} failures")
             return int(bool(failed))
         if args.command == "scan":
+            perf_output = getattr(args, "perf_output", None)
+            if perf_output and config.data["pipeline"] != "detection":
+                raise ValueError("--perf-output requires the detection pipeline")
             name = getattr(args, "name", None)
             aliases = getattr(args, "alias", [])
             if name or aliases:
@@ -120,9 +128,12 @@ def execute(args):
                     OR EXISTS (SELECT 1 FROM video_scans s WHERE s.video_id=videos.id
                     AND s.status!='completed') ORDER BY id"""
                 )
+            if perf_output and len(queue) != 1:
+                raise ValueError("--perf-output requires exactly one video")
             recognizer = None
             detector = None
             failures = 0
+            setup_s = 0.0
             for video in queue:
                 unfinished = store.rows("SELECT id FROM video_scans WHERE video_id=? AND "
                                         "status!='completed' LIMIT 1", (video["id"],))
@@ -137,6 +148,7 @@ def execute(args):
                         video["hud_profile"] = args.profile
                     # Check model setup before initiating downloads.
                     if recognizer is None:
+                        setup_started = time.perf_counter()
                         if config.data["pipeline"] == "legacy_hud":
                             recognizer = OpenOCRRecognizer(config)
                         else:
@@ -145,10 +157,12 @@ def execute(args):
                             detector, recognizer = create_models(config)
                             models.callback(detector.close)
                             models.callback(recognizer.close)
+                        setup_s = time.perf_counter() - setup_started
                     if config.data["pipeline"] == "legacy_hud":
                         path = download(store, video)
                         video["local_path"] = str(path)
-                    ingest(
+                    profile = ScanProfile() if perf_output else None
+                    completed = ingest(
                         store,
                         config,
                         video,
@@ -156,7 +170,14 @@ def execute(args):
                         args.fps,
                         args.reprocess,
                         detector=detector,
+                        profile=profile,
                     )
+                    if profile and completed:
+                        result = profile.result(video, merge_settings(config.data),
+                                                model_setup_s=setup_s)
+                        write_profile(perf_output, result)
+                        print(f"Scan profile: {perf_output.resolve()} "
+                              f"({result['realtime_factor']}x real time)")
                 except Exception as exc:
                     failures += 1
                     # A failed replacement must leave the old completed corpus usable.

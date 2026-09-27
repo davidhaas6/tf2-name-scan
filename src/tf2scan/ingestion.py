@@ -18,7 +18,8 @@ log = logging.getLogger(__name__)
 
 
 def ingest(
-    store, config, video, recognizer, fps=None, reprocess=False, frame_source=None, *, detector=None
+    store, config, video, recognizer, fps=None, reprocess=False, frame_source=None, *, detector=None,
+    profile=None
 ):
     if config.data.get("pipeline", "detection") != "legacy_hud":
         if detector is None:
@@ -36,6 +37,7 @@ def ingest(
             fps=fps,
             reprocess=reprocess,
             frame_source=frame_source,
+            profile=profile,
         )
     if (
         store.rows("SELECT id FROM selected_video_scans WHERE video_id=?", (video["id"],))

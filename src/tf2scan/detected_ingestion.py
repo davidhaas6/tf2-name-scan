@@ -20,12 +20,16 @@ from .retention import select_crops, useful_text
 from .settings import merge_settings
 
 
-def recognize_crops(prepared, recognizer, settings):
+def recognize_crops(prepared, recognizer, settings, profile=None):
     results = []
     size = settings["recognizer"]["batch_size"]
     for start in range(0, len(prepared), size):
         batch = prepared[start : start + size]
-        recognized = recognizer.recognize([crop.image for crop in batch])
+        if profile:
+            with profile.measure("recognition"):
+                recognized = recognizer.recognize([crop.image for crop in batch])
+        else:
+            recognized = recognizer.recognize([crop.image for crop in batch])
         if len(recognized) != len(batch):
             raise RuntimeError("Recognizer returned the wrong number of crops")
         results.extend(zip(batch, recognized))
@@ -37,9 +41,14 @@ def recognize_frame(frame, detections, recognizer, settings):
     return recognize_crops(prepared, recognizer, settings)
 
 
-def _prepare_frame(frame, detections, recognizer, settings):
-    prepared, duplicates, capped = select_crops(frame, detections, settings)
-    recognized = recognize_crops(prepared, recognizer, settings)
+def _prepare_frame(frame, detections, recognizer, settings, profile=None):
+    if profile:
+        with profile.measure("crop_preparation"):
+            prepared, duplicates, capped = select_crops(frame, detections, settings)
+        profile.crops += len(prepared)
+    else:
+        prepared, duplicates, capped = select_crops(frame, detections, settings)
+    recognized = recognize_crops(prepared, recognizer, settings, profile)
     accepted = [(crop, result) for crop, result in recognized
                 if useful_text(result, settings["crops"]["confidence_floor"])]
     return frame, len(detections), duplicates, capped, len(recognized), accepted
@@ -162,7 +171,7 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
 
 
 def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
-                    reprocess=False, frame_source=None):
+                    reprocess=False, frame_source=None, profile=None):
     overrides = {"sampling": {"fps": fps}} if fps is not None else None
     settings = merge_settings(config.data, overrides)
     for adapter in (detector, recognizer):
@@ -258,29 +267,59 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
                                                http_headers=headers)
                     pending, pending_bytes, first_time, seen = [], 0, None, 0
                     with frame_iterator(source) as frames:
-                        while batch := list(_take(frames, settings["detector"]["batch_size"])):
+                        while True:
+                            if profile:
+                                with profile.measure("decoding"):
+                                    batch = list(_take(frames, settings["detector"]["batch_size"]))
+                            else:
+                                batch = list(_take(frames, settings["detector"]["batch_size"]))
+                            if not batch:
+                                break
                             if any(not isinstance(frame, Frame) for frame in batch):
                                 raise TypeError("Detection ingestion requires source-aware Frame records")
-                            proposals = detect_frames(detector, batch)
+                            if profile:
+                                with profile.measure("detection"):
+                                    proposals = detect_frames(detector, batch)
+                            else:
+                                proposals = detect_frames(detector, batch)
                             for frame, detections in zip(batch, proposals):
                                 if frame.timestamp_s < start - 1e-8 or frame.timestamp_s >= end - 1e-8:
                                     continue
                                 seen += 1
                                 if frame.timestamp_s <= tracker.last_time:
                                     continue
-                                pending.append(_prepare_frame(frame, detections, recognizer, settings))
+                                if profile:
+                                    profile.frames += 1
+                                    if profile.source_resolution is None:
+                                        profile.source_resolution = [frame.source_width,
+                                                                     frame.source_height]
+                                        profile.working_resolution = [frame.image.width,
+                                                                      frame.image.height]
+                                pending.append(_prepare_frame(frame, detections, recognizer, settings,
+                                                              profile))
                                 pending_bytes += frame.image.width * frame.image.height * 3
                                 first_time = frame.timestamp_s if first_time is None else first_time
                                 limits = settings["persistence"]
                                 if (frame.timestamp_s - first_time >= limits["commit_interval_s"]
                                         or len(pending) >= limits["max_rows"]
                                         or pending_bytes >= limits["max_bytes"]):
-                                    _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
-                                                  tracker, pending, recognizer, settings, aliases)
+                                    if profile:
+                                        with profile.measure("persistence_evidence"):
+                                            _commit_batch(store, scan_id, chunk["id"], video["id"],
+                                                          folder, tracker, pending, recognizer,
+                                                          settings, aliases)
+                                    else:
+                                        _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
+                                                      tracker, pending, recognizer, settings, aliases)
                                     pending, pending_bytes, first_time = [], 0, None
                     if pending:
-                        _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
-                                      tracker, pending, recognizer, settings, aliases)
+                        if profile:
+                            with profile.measure("persistence_evidence"):
+                                _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
+                                              tracker, pending, recognizer, settings, aliases)
+                        else:
+                            _commit_batch(store, scan_id, chunk["id"], video["id"], folder,
+                                          tracker, pending, recognizer, settings, aliases)
                     if not seen and not store.rows("SELECT id FROM sampled_frames WHERE scan_chunk_id=? LIMIT 1",
                                                    (chunk["id"],)):
                         raise RuntimeError("No video frames decoded")
