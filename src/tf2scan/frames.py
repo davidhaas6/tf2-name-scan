@@ -48,13 +48,27 @@ def detector_frame(frame, region="full"):
     return replace(
         frame,
         image=frame.image.crop((left, 0, width, bottom)),
-        source_region=(frame.source_width * left / width, 0,
-                       frame.source_width, frame.source_height * bottom / height),
+        source_region=(
+            frame.source_width * left / width,
+            0,
+            frame.source_width,
+            frame.source_height * bottom / height,
+        ),
     )
 
 
-def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=None,
-                  end=None, dimensions=None, http_headers=None):
+def sample_frames(
+    path,
+    fps=1,
+    start=0,
+    limit=None,
+    *,
+    max_height=720,
+    chunk_id=None,
+    end=None,
+    dimensions=None,
+    http_headers=None,
+):
     if not math.isfinite(fps) or not math.isfinite(start) or fps <= 0 or start < 0:
         raise ValueError("fps must be positive and start nonnegative")
     if isinstance(max_height, bool) or not isinstance(max_height, int) or max_height <= 0:
@@ -76,8 +90,11 @@ def sample_frames(path, fps=1, start=0, limit=None, *, max_height=720, chunk_id=
         "error",
         "-noautorotate",
         *(["-rw_timeout", "30000000"] if str(path).startswith(("http:", "https:")) else []),
-        *(["-headers", "".join(f"{key}: {value}\r\n" for key, value in
-                              http_headers.items())] if http_headers else []),
+        *(
+            ["-headers", "".join(f"{key}: {value}\r\n" for key, value in http_headers.items())]
+            if http_headers
+            else []
+        ),
         "-ss",
         str(start),
         *(["-t", str(end - start)] if end is not None else []),

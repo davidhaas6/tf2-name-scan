@@ -30,9 +30,17 @@ class ScanProfile:
 
     def result(self, video, settings, *, model_setup_s=0):
         wall = time.perf_counter() - self.started
-        stages = {key: round(self.seconds[key], 3) for key in
-                  ("decoding", "detection", "crop_preparation", "recognition",
-                  "persistence_evidence", "startup_cleanup")}
+        stages = {
+            key: round(self.seconds[key], 3)
+            for key in (
+                "decoding",
+                "detection",
+                "crop_preparation",
+                "recognition",
+                "persistence_evidence",
+                "startup_cleanup",
+            )
+        }
         stages["other"] = round(max(0, wall - sum(self.seconds[key] for key in stages)), 3)
         transaction = self.seconds["persistence_transaction"]
         image_save = self.seconds["evidence_image_save"]
@@ -51,15 +59,24 @@ class ScanProfile:
         bottleneck = max(stages, key=stages.get)
         duration = video["duration_s"]
         return {
-            "video_id": video["id"], "duration_s": duration,
-            "wall_s": round(wall, 3), "realtime_factor": round(wall / duration, 3) if duration else None,
-            "model_setup_s": round(model_setup_s, 3), "frames": self.frames,
-            "crops": self.crops, "source_resolution": self.source_resolution,
+            "video_id": video["id"],
+            "duration_s": duration,
+            "wall_s": round(wall, 3),
+            "realtime_factor": round(wall / duration, 3) if duration else None,
+            "model_setup_s": round(model_setup_s, 3),
+            "frames": self.frames,
+            "crops": self.crops,
+            "source_resolution": self.source_resolution,
             "working_resolution": self.working_resolution,
             "detector_resolution": self.detector_resolution,
-            "hardware": {"cpu": platform.processor(), "logical_cpus": os.cpu_count(),
-                         "platform": platform.platform()},
-            "stages_s": stages, "largest_stage": bottleneck, "settings": settings,
+            "hardware": {
+                "cpu": platform.processor(),
+                "logical_cpus": os.cpu_count(),
+                "platform": platform.platform(),
+            },
+            "stages_s": stages,
+            "largest_stage": bottleneck,
+            "settings": settings,
             "persistence_detail_s": detail,
             "persistence_counts": dict(self.counts),
             "persistence_batches": self.persistence_batches,

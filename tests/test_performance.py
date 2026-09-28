@@ -27,11 +27,18 @@ def test_persistence_detail_counts_batch_without_orphan_sweep(tmp_path):
     config = Config(tmp_path / "config.yaml", {})
     profile = ScanProfile()
     with Store(config.root) as store:
-        store.upsert_video({"id": "clip", "title": "clip", "source_url": "fixture",
-                            "duration_s": 1})
-        assert ingest(store, config, store.video("clip"), Recognizer(),
-                      detector=FakeDetector({"0": [box()]}), frame_source=[frame()],
-                      profile=profile)
+        store.upsert_video(
+            {"id": "clip", "title": "clip", "source_url": "fixture", "duration_s": 1}
+        )
+        assert ingest(
+            store,
+            config,
+            store.video("clip"),
+            Recognizer(),
+            detector=FakeDetector({"0": [box()]}),
+            frame_source=[frame()],
+            profile=profile,
+        )
         result = profile.result(store.video("clip"), {})
     counts = result["persistence_counts"]
     assert counts["batch_commits"] == 1

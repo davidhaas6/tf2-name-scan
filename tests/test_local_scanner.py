@@ -184,13 +184,24 @@ def test_sparse_evidence_reports_actual_observation_and_missing_crop(tmp_path):
     rec.recognize = lambda crops: [next(results) for _ in crops]
     with Store(config.root) as store:
         store.upsert_video({"id": "v", "title": "video", "source_url": "https://example.com/v"})
-        ingest(store, config, store.video("v"), rec, detector=detector,
-               frame_source=[frame(), frame("1")])
+        ingest(
+            store,
+            config,
+            store.video("v"),
+            rec,
+            detector=detector,
+            frame_source=[frame(), frame("1")],
+        )
         observations = store.rows("SELECT * FROM observations ORDER BY id")
         assert len(observations) == 2
         assert observations[0]["crop_path"]
         assert observations[1]["crop_path"] is None
-        assert store.rows("SELECT full_frame_path FROM sampled_frames ORDER BY id")[1]["full_frame_path"] is None
+        assert (
+            store.rows("SELECT full_frame_path FROM sampled_frames ORDER BY id")[1][
+                "full_frame_path"
+            ]
+            is None
+        )
         query_id = run_query(store, "Player0ne")
         hit = export_report(store, query_id, text_clusters=True)[0]
         assert hit["matched_observation_id"] == observations[1]["id"]
@@ -199,7 +210,8 @@ def test_sparse_evidence_reports_actual_observation_and_missing_crop(tmp_path):
         assert hit["evidence_kind"] == "representative"
         assert hit["observation_evidence_available"] is False
         assert "Matching observation crop unavailable" in (
-            config.root / "report/index.html").read_text(encoding="utf-8")
+            config.root / "report/index.html"
+        ).read_text(encoding="utf-8")
         exported = json.loads((config.root / "text_clusters.jsonl").read_text(encoding="utf-8"))
         assert exported["schema_version"] == 2
         assert exported["observations"][1]["polygon"]
@@ -207,19 +219,33 @@ def test_sparse_evidence_reports_actual_observation_and_missing_crop(tmp_path):
 
 
 def test_configured_query_candidate_crops_are_bounded(tmp_path):
-    config = Config(tmp_path / "config.yaml", {
-        "query": {"target_name": "Player0ne"},
-        "evidence": {"max_candidates": 1},
-    })
+    config = Config(
+        tmp_path / "config.yaml",
+        {
+            "query": {"target_name": "Player0ne"},
+            "evidence": {"max_candidates": 1},
+        },
+    )
     detector = FakeDetector({str(i): [box()] for i in range(3)})
     rec = Recognizer()
-    results = iter([Recognition("PlayerOne", 0.9),
-                    Recognition("Player0ne", 0.8), Recognition("Player0ne", 0.7)])
+    results = iter(
+        [
+            Recognition("PlayerOne", 0.9),
+            Recognition("Player0ne", 0.8),
+            Recognition("Player0ne", 0.7),
+        ]
+    )
     rec.recognize = lambda crops: [next(results) for _ in crops]
     with Store(config.root) as store:
         store.upsert_video({"id": "v", "title": "video", "source_url": "url"})
-        ingest(store, config, store.video("v"), rec, detector=detector,
-               frame_source=[frame(str(i)) for i in range(3)])
+        ingest(
+            store,
+            config,
+            store.video("v"),
+            rec,
+            detector=detector,
+            frame_source=[frame(str(i)) for i in range(3)],
+        )
         observations = store.rows("SELECT id,crop_path FROM observations ORDER BY id")
         assert len(observations) == 3
         assert sum(bool(o["crop_path"]) for o in observations) == 2
@@ -241,7 +267,9 @@ def test_paddle_order_mapping_color_and_cardinality(monkeypatch):
 
     detector = PaddleDetector(SimpleNamespace(predict=detect), merge_settings({})["detector"])
     assert detector.detect([frame(source=(640, 360))])[0][0].polygon[0] == (40, 60)
-    assert detector.detect([detector_frame(frame(source=(640, 360)), "top_right")])[0][0].polygon[0] == (360, 60)
+    assert detector.detect([detector_frame(frame(source=(640, 360)), "top_right")])[0][0].polygon[
+        0
+    ] == (360, 60)
     assert calls[0]["limit_side_len"] == 320 and calls[0]["limit_type"] == "max"
     engine = SimpleNamespace(
         predict=lambda images, **kwargs: [

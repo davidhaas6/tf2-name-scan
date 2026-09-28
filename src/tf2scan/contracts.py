@@ -45,8 +45,7 @@ class Frame:
             raise ValueError("Frame sample identity is required")
         if self.source_region is not None:
             x0, y0, x1, y1 = self.source_region
-            if not (0 <= x0 < x1 <= self.source_width and
-                    0 <= y0 < y1 <= self.source_height):
+            if not (0 <= x0 < x1 <= self.source_width and 0 <= y0 < y1 <= self.source_height):
                 raise ValueError("Frame source region must fit inside the source")
 
     def __iter__(self):

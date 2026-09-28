@@ -26,13 +26,18 @@ def evidence_url(store, value):
         return ""
     path = (store.root / value).resolve()
     base = (store.root / "report").resolve()
-    return (path.relative_to(base).as_posix()
-            if base.is_relative_to(store.root.resolve())
-            and path.is_relative_to(base) and path.is_file() else "")
+    return (
+        path.relative_to(base).as_posix()
+        if base.is_relative_to(store.root.resolve())
+        and path.is_relative_to(base)
+        and path.is_file()
+        else ""
+    )
 
 
-def export_report(store, query_id=None, rows=False, *, text_clusters=False,
-                  scan_id=None, run_id=None):
+def export_report(
+    store, query_id=None, rows=False, *, text_clusters=False, scan_id=None, run_id=None
+):
     condition, params = ("WHERE h.query_id=?", (query_id,)) if query_id else ("", ())
     scan_ids = store.selected_scan_ids(scan_id=scan_id, run_id=run_id)
     condition += (
@@ -67,31 +72,39 @@ def export_report(store, query_id=None, rows=False, *, text_clusters=False,
             JOIN cluster_observations co ON co.observation_id=o.id
             JOIN sampled_frames f ON f.id=o.sampled_frame_id
             WHERE co.cluster_id=? ORDER BY f.timestamp_s,o.id""",
-            (hit["text_cluster_id"],))
+            (hit["text_cluster_id"],),
+        )
         hit["ocr_strings"] = list(dict.fromkeys(o["raw_text"] for o in observations))
         scored = store.rows(
             """SELECT qm.observation_id FROM query_matches qm
             JOIN cluster_observations co ON co.observation_id=qm.observation_id
             WHERE qm.query_id=? AND co.cluster_id=? AND qm.matched_alias=?
             ORDER BY qm.match_score DESC,qm.observation_id LIMIT 1""",
-            (hit["query_id"], hit["text_cluster_id"], hit["matched_alias"]),)
+            (hit["query_id"], hit["text_cluster_id"], hit["matched_alias"]),
+        )
         matched_id = scored[0]["observation_id"] if scored else None
         matched = next((o for o in observations if o["id"] == matched_id), None)
-        representative = next((o for o in observations
-                               if o["id"] == hit["representative_observation_id"]), None)
+        representative = next(
+            (o for o in observations if o["id"] == hit["representative_observation_id"]), None
+        )
         evidence = matched if matched and matched["crop_path"] else representative
         hit["matched_observation_id"] = matched_id
         hit["matched_timestamp_s"] = matched["timestamp_s"] if matched else None
-        hit["matched_polygon"] = (decode_polygon(matched["polygon_blob"])
-                                  if matched and matched["polygon_blob"] else None)
+        hit["matched_polygon"] = (
+            decode_polygon(matched["polygon_blob"]) if matched and matched["polygon_blob"] else None
+        )
         hit["representative_polygon"] = (
             decode_polygon(representative["polygon_blob"])
-            if representative and representative["polygon_blob"] else None)
+            if representative and representative["polygon_blob"]
+            else None
+        )
         hit["matched_crop_path"] = matched["crop_path"] if matched else None
         hit["observation_evidence_available"] = bool(matched and matched["crop_path"])
         hit["evidence_path"] = evidence["crop_path"] if evidence else hit["representative_path"]
         hit["evidence_observation_id"] = evidence["id"] if evidence else None
-        hit["evidence_timestamp_s"] = evidence["timestamp_s"] if evidence else hit["evidence_timestamp_s"]
+        hit["evidence_timestamp_s"] = (
+            evidence["timestamp_s"] if evidence else hit["evidence_timestamp_s"]
+        )
         hit["evidence_text"] = evidence["raw_text"] if evidence else hit["representative_text"]
         hit["frame_path"] = evidence["full_frame_path"] if evidence else hit["frame_path"]
         hit["evidence_kind"] = "matched" if evidence is matched and matched else "representative"
@@ -107,12 +120,14 @@ def export_report(store, query_id=None, rows=False, *, text_clusters=False,
                 value["schema_version"] = 2
                 video = store.video(row["video_id"])
                 value.update({key: video[key] for key in ("source_url", "title", "channel_id")})
-                scan = store.rows("SELECT scan_run_id,status FROM video_scans WHERE id=?",
-                                  (row["video_scan_id"],))[0]
+                scan = store.rows(
+                    "SELECT scan_run_id,status FROM video_scans WHERE id=?", (row["video_scan_id"],)
+                )[0]
                 value["scan_status"] = scan["status"]
                 value["scan_run_id"] = scan["scan_run_id"]
-                value["run_provenance"] = store.rows("SELECT * FROM scan_runs WHERE id=?",
-                                                       (scan["scan_run_id"],))[0]
+                value["run_provenance"] = store.rows(
+                    "SELECT * FROM scan_runs WHERE id=?", (scan["scan_run_id"],)
+                )[0]
                 if value["representative_polygon_blob"] is not None:
                     value["representative_polygon"] = decode_polygon(
                         value["representative_polygon_blob"]
@@ -128,7 +143,9 @@ def export_report(store, query_id=None, rows=False, *, text_clusters=False,
                     co.support_score FROM cluster_observations co
                     JOIN observations o ON o.id=co.observation_id
                     JOIN sampled_frames f ON f.id=o.sampled_frame_id
-                    WHERE co.cluster_id=? ORDER BY f.timestamp_s,o.id""", (row["id"],))
+                    WHERE co.cluster_id=? ORDER BY f.timestamp_s,o.id""",
+                    (row["id"],),
+                )
                 for observation in observations:
                     blob = observation.pop("polygon_blob")
                     observation["polygon"] = decode_polygon(blob) if blob else None
@@ -146,7 +163,11 @@ def export_report(store, query_id=None, rows=False, *, text_clusters=False,
     escape = lambda value: html.escape(str(value), quote=True)
     empty_message = ""
     if not hits:
-        target = store.rows("SELECT target_name FROM queries WHERE id=?", (query_id,)) if query_id else []
+        target = (
+            store.rows("SELECT target_name FROM queries WHERE id=?", (query_id,))
+            if query_id
+            else []
+        )
         if target:
             empty_message = (
                 f"<p>No candidates for {escape(target[0]['target_name'])}. "
@@ -171,10 +192,10 @@ def export_report(store, query_id=None, rows=False, *, text_clusters=False,
         else:
             evidence = "Evidence unavailable"
         if crop or frame:
-            evidence += f'<br><small>{escape(hit["evidence_kind"])} evidence'
+            evidence += f"<br><small>{escape(hit['evidence_kind'])} evidence"
             if hit["evidence_timestamp_s"] is not None:
-                evidence += f' at {hit["evidence_timestamp_s"]:.1f}s'
-            evidence += f': {escape(hit["evidence_text"])}</small>'
+                evidence += f" at {hit['evidence_timestamp_s']:.1f}s"
+            evidence += f": {escape(hit['evidence_text'])}</small>"
         if hit["matched_observation_id"] and not hit["observation_evidence_available"]:
             evidence += "<br><small>Matching observation crop unavailable</small>"
         body.append(

@@ -55,7 +55,10 @@ def test_cross_frame_recognition_preserves_order_and_empty_frames():
     entries = _prepare_frames(frames, proposals, recognizer, merge_settings({}))
     assert [entry[4] for entry in entries] == [1, 0, 2]
     assert [result.text for entry in entries for _, result in entry[5]] == [
-        "Player1", "Player2", "Player3"]
+        "Player1",
+        "Player2",
+        "Player3",
+    ]
     assert [len(call) for call in recognizer.calls] == [3]
 
 
@@ -131,10 +134,13 @@ def test_top_right_detector_crop_preserves_source_coordinates():
     assert cropped.source_region == (320, 0, 640, 180)
     assert cropped.working_to_source == (2, 2)
     assert detector_input(cropped)[1] == (2, 2)
-    assert to_source_detection("name", ((0, 0), (40, 0), (40, 10), (0, 10)),
-                               0.9, cropped.working_to_source,
-                               cropped.source_offset).polygon == (
-                                   (320, 0), (400, 0), (400, 20), (320, 20))
+    assert to_source_detection(
+        "name",
+        ((0, 0), (40, 0), (40, 10), (0, 10)),
+        0.9,
+        cropped.working_to_source,
+        cropped.source_offset,
+    ).polygon == ((320, 0), (400, 0), (400, 20), (320, 20))
     assert detector_frame(original) is original
 
 
@@ -151,8 +157,14 @@ def test_top_right_crop_is_applied_before_detection(tmp_path):
     detector.detect = detect
     with Store(config.root) as store:
         store.upsert_video({"id": "v", "title": "video", "source_url": "url"})
-        assert ingest(store, config, store.video("v"), Recognizer(), detector=detector,
-                      frame_source=[frame(size=(320, 180))])
+        assert ingest(
+            store,
+            config,
+            store.video("v"),
+            Recognizer(),
+            detector=detector,
+            frame_source=[frame(size=(320, 180))],
+        )
         assert seen == [((160, 90), (160.0, 0))]
         observation = store.rows("SELECT polygon_blob FROM observations")[0]
         assert decode_polygon(observation["polygon_blob"]) == box(x=220, y=30).polygon

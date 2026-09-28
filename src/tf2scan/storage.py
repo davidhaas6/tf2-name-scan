@@ -185,8 +185,9 @@ class Store(LineageStore):
         # Commit the cascade first. A failed delete must never remove live evidence.
         with self.db:
             self.db.execute("DELETE FROM videos WHERE id=?", (video_id,))
-            self.db.execute("DELETE FROM scan_runs WHERE id NOT IN "
-                            "(SELECT scan_run_id FROM video_scans)")
+            self.db.execute(
+                "DELETE FROM scan_runs WHERE id NOT IN (SELECT scan_run_id FROM video_scans)"
+            )
         if video["managed_download"] and video["local_path"]:
             path = Path(video["local_path"]).resolve()
             if path.is_relative_to((self.root / "downloads").resolve()):
@@ -196,7 +197,8 @@ class Store(LineageStore):
             for row in self.db.execute(
                 "SELECT evidence_path FROM text_clusters UNION SELECT frame_path FROM text_clusters "
                 "UNION SELECT crop_path FROM observations UNION SELECT legacy_evidence_path FROM observations "
-                "UNION SELECT full_frame_path FROM sampled_frames")
+                "UNION SELECT full_frame_path FROM sampled_frames"
+            )
             if row[0]
         }
         assets = (self.root / "report/assets").resolve()
@@ -204,14 +206,17 @@ class Store(LineageStore):
             for value in row.values():
                 if value:
                     path = (self.root / value).resolve()
-                    if (assets.is_relative_to(self.root.resolve())
-                            and path.is_relative_to(assets)
-                            and path not in referenced):
+                    if (
+                        assets.is_relative_to(self.root.resolve())
+                        and path.is_relative_to(assets)
+                        and path not in referenced
+                    ):
                         path.unlink(missing_ok=True)
         self.prune_orphan_evidence()
 
-    def compact_evidence(self, scan_id, max_candidates=4, aliases=(), profile=None,
-                         cluster_ids=None):
+    def compact_evidence(
+        self, scan_id, max_candidates=4, aliases=(), profile=None, cluster_ids=None
+    ):
         """Keep actual representative and bounded query-relevant observation crops."""
         from .matching import alias_score
 
@@ -232,23 +237,33 @@ class Store(LineageStore):
                 observations = self.rows(
                     "SELECT o.id,o.raw_text,o.crop_path FROM observations o "
                     "JOIN cluster_observations co ON co.observation_id=o.id "
-                    "WHERE co.cluster_id=?", (cluster["id"],))
+                    "WHERE co.cluster_id=?",
+                    (cluster["id"],),
+                )
                 ranked = sorted(
-                    ((max(alias_score(o["raw_text"], a) for a in aliases), o["id"])
-                     for o in observations if o["crop_path"]
-                     and o["id"] != cluster["representative_observation_id"]),
-                    key=lambda item: (-item[0], item[1]))
-                keep.update(identity for score, identity in ranked[:max_candidates] if score >= 0.65)
+                    (
+                        (max(alias_score(o["raw_text"], a) for a in aliases), o["id"])
+                        for o in observations
+                        if o["crop_path"] and o["id"] != cluster["representative_observation_id"]
+                    ),
+                    key=lambda item: (-item[0], item[1]),
+                )
+                keep.update(
+                    identity for score, identity in ranked[:max_candidates] if score >= 0.65
+                )
         if cluster_ids is None:
             discard = self.rows(
                 "SELECT id,crop_path FROM observations WHERE video_scan_id=? AND crop_path IS NOT NULL",
-                (scan_id,))
+                (scan_id,),
+            )
         else:
             discard = self.rows(
                 "SELECT DISTINCT o.id,o.crop_path FROM observations o "
                 "JOIN cluster_observations co ON co.observation_id=o.id "
                 f"WHERE co.cluster_id IN ({','.join('?' for _ in cluster_ids)}) "
-                "AND o.crop_path IS NOT NULL", tuple(cluster_ids))
+                "AND o.crop_path IS NOT NULL",
+                tuple(cluster_ids),
+            )
         if profile:
             profile.counts["compaction_crops_examined"] += len(discard)
         removed = [row["crop_path"] for row in discard if row["id"] not in keep]
@@ -262,15 +277,18 @@ class Store(LineageStore):
                     AND full_frame_path IS NOT NULL AND id NOT IN
                     (SELECT o.sampled_frame_id FROM observations o JOIN text_clusters c
                     ON c.representative_observation_id=o.id WHERE c.video_scan_id=?)""",
-                    (scan_id, scan_id)).fetchall()
+                    (scan_id, scan_id),
+                ).fetchall()
                 removed.extend(row[0] for row in frames)
                 db.execute(
                     """UPDATE sampled_frames SET full_frame_path=NULL WHERE video_scan_id=?
                     AND id NOT IN (SELECT o.sampled_frame_id FROM observations o
                     JOIN text_clusters c ON c.representative_observation_id=o.id
-                    WHERE c.video_scan_id=?)""", (scan_id, scan_id))
+                    WHERE c.video_scan_id=?)""",
+                    (scan_id, scan_id),
+                )
             else:
-                placeholders = ','.join('?' for _ in cluster_ids)
+                placeholders = ",".join("?" for _ in cluster_ids)
                 frames = db.execute(
                     "SELECT DISTINCT f.full_frame_path FROM sampled_frames f "
                     "JOIN observations o ON o.sampled_frame_id=f.id "
@@ -278,10 +296,14 @@ class Store(LineageStore):
                     f"WHERE co.cluster_id IN ({placeholders}) "
                     "AND f.full_frame_path IS NOT NULL AND f.id NOT IN "
                     "(SELECT o2.sampled_frame_id FROM observations o2 JOIN text_clusters c "
-                    "ON c.representative_observation_id=o2.id)", tuple(cluster_ids)).fetchall()
+                    "ON c.representative_observation_id=o2.id)",
+                    tuple(cluster_ids),
+                ).fetchall()
                 removed.extend(row[0] for row in frames)
-                db.executemany("UPDATE sampled_frames SET full_frame_path=NULL WHERE full_frame_path=?",
-                               [(row[0],) for row in frames])
+                db.executemany(
+                    "UPDATE sampled_frames SET full_frame_path=NULL WHERE full_frame_path=?",
+                    [(row[0],) for row in frames],
+                )
         if cluster_ids is None:
             self.prune_orphan_evidence(profile=profile)
         else:
@@ -297,15 +319,21 @@ class Store(LineageStore):
             if not value:
                 continue
             relative = Path(value)
-            if (relative.is_absolute() or len(relative.parts) != 4
-                    or relative.parts[:2] != ("report", "assets")
-                    or not re.fullmatch(r"[0-9a-f]{16}-[0-9a-f]{32}", relative.parts[2])):
+            if (
+                relative.is_absolute()
+                or len(relative.parts) != 4
+                or relative.parts[:2] != ("report", "assets")
+                or not re.fullmatch(r"[0-9a-f]{16}-[0-9a-f]{32}", relative.parts[2])
+            ):
                 continue
             if not re.fullmatch(r"\d+-(row\.png|frame\.jpg)", relative.parts[3]):
                 continue
             candidate = self.root / relative
-            if (candidate.is_symlink() or candidate.parent.is_symlink()
-                    or not candidate.resolve().is_relative_to(assets)):
+            if (
+                candidate.is_symlink()
+                or candidate.parent.is_symlink()
+                or not candidate.resolve().is_relative_to(assets)
+            ):
                 continue
             if profile:
                 profile.counts["asset_files_checked"] += 1
@@ -313,7 +341,8 @@ class Store(LineageStore):
                 "SELECT 1 FROM text_clusters WHERE evidence_path=? OR frame_path=? "
                 "UNION SELECT 1 FROM observations WHERE crop_path=? OR legacy_evidence_path=? "
                 "UNION SELECT 1 FROM sampled_frames WHERE full_frame_path=? LIMIT 1",
-                (value,) * 5).fetchone()
+                (value,) * 5,
+            ).fetchone()
             if profile:
                 profile.counts["referenced_paths_examined"] += 1
             if not referenced and candidate.is_file():
@@ -353,8 +382,7 @@ class Store(LineageStore):
                 if profile:
                     profile.counts["asset_files_checked"] += 1
                 if (
-                    re.fullmatch(r"\d+-(row\.png|frame\.jpg)(\.[0-9a-f]{32}\.tmp)?",
-                                 path.name)
+                    re.fullmatch(r"\d+-(row\.png|frame\.jpg)(\.[0-9a-f]{32}\.tmp)?", path.name)
                     and path.is_file()
                     and not path.is_symlink()
                     and path.resolve().is_relative_to(assets)

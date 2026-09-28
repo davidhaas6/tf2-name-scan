@@ -105,9 +105,14 @@ def test_index_and_stream_resolution_enable_node(tmp_path, monkeypatch):
         def extract_info(self, source, download=False):
             assert source == url and not download
             return {
-                "id": "ZiZmodw-yRc", "webpage_url": url, "title": "test",
-                "duration": 15, "formats": [{"height": 720}],
-                "url": "https://media.example.com/video", "width": 1280, "height": 720,
+                "id": "ZiZmodw-yRc",
+                "webpage_url": url,
+                "title": "test",
+                "duration": 15,
+                "formats": [{"height": 720}],
+                "url": "https://media.example.com/video",
+                "width": 1280,
+                "height": 720,
             }
 
     monkeypatch.setattr("yt_dlp.YoutubeDL", YDL)

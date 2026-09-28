@@ -94,9 +94,13 @@ class TextTracker:
         for row in rows:
             motion = json.loads(row["motion_summary_json"])
             tracker.active[row["id"]] = TextTrack(
-                row["id"], row["end_s"], tuple(motion["center"]),
-                tuple(motion["size"]), row["raw_text"],
-                tuple(motion["velocity_per_s"]), row["support_count"],
+                row["id"],
+                row["end_s"],
+                tuple(motion["center"]),
+                tuple(motion["size"]),
+                row["raw_text"],
+                tuple(motion["velocity_per_s"]),
+                row["support_count"],
             )
         return tracker
 

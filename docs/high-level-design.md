@@ -115,6 +115,7 @@ Keep detection behind an adapter:
 class TextDetector(Protocol):
     def detect(self, frames: list[Image.Image]) -> list[list[Detection]]: ...
 
+
 @dataclass
 class Detection:
     polygon: list[tuple[float, float]]
@@ -160,6 +161,7 @@ Use **PP-OCRv6-small-rec** as the V1 recognizer alongside PP-OCRv6-small-det. Ke
 ```python
 class Recognizer(Protocol):
     def recognize(self, crops: list[Image.Image]) -> list[Recognition]: ...
+
 
 @dataclass
 class Recognition:

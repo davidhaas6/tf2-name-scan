@@ -179,7 +179,9 @@ def test_delete_video_keeps_shared_run_and_other_source(tmp_path):
         for video_id in ("a", "b"):
             store.upsert_video({"id": video_id, "title": video_id, "source_url": "url"})
         scan_a = store.start_scan("a", "{}", "shared", legacy=True)
-        run_id = store.rows("SELECT scan_run_id FROM video_scans WHERE id=?", (scan_a,))[0]["scan_run_id"]
+        run_id = store.rows("SELECT scan_run_id FROM video_scans WHERE id=?", (scan_a,))[0][
+            "scan_run_id"
+        ]
         with store.transaction() as db:
             insert(db, "video_scans", scan_run_id=run_id, video_id="b", status="completed")
         store.delete_video("a")

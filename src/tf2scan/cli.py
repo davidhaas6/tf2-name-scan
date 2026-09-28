@@ -49,9 +49,14 @@ def parser():
             sub.add_argument("--fps", type=float)
             sub.add_argument("--chunk-seconds", type=float)
             sub.add_argument("--reprocess", action="store_true")
-            sub.add_argument("--perf-output", type=Path,
-                             help="Write per-stage timing JSON for one detected video")
-            sub.add_argument("--name", help="Name to search after scanning; overrides query.target_name")
+            sub.add_argument(
+                "--perf-output",
+                type=Path,
+                help="Write per-stage timing JSON for one detected video",
+            )
+            sub.add_argument(
+                "--name", help="Name to search after scanning; overrides query.target_name"
+            )
             sub.add_argument("--alias", action="append", default=[])
         elif name == "query":
             sub.add_argument("--name")
@@ -85,8 +90,12 @@ def configured_query(store, config, name=None, aliases=None):
     target = name or query.get("target_name")
     if not target:
         return None
-    return run_query(store, target, aliases if name else query.get("aliases", []),
-                     matching=config.data.get("matching"))
+    return run_query(
+        store,
+        target,
+        aliases if name else query.get("aliases", []),
+        matching=config.data.get("matching"),
+    )
 
 
 def execute(args):
@@ -109,10 +118,14 @@ def execute(args):
                     query["aliases"] = aliases
                 else:
                     query["aliases"] = [*query.get("aliases", []), *aliases]
-            sampling_overrides = {k: v for k, v in
-                                  (("fps", args.fps),
-                                   ("chunk_seconds", getattr(args, "chunk_seconds", None)))
-                                  if v is not None}
+            sampling_overrides = {
+                k: v
+                for k, v in (
+                    ("fps", args.fps),
+                    ("chunk_seconds", getattr(args, "chunk_seconds", None)),
+                )
+                if v is not None
+            }
             if sampling_overrides:
                 config.data.setdefault("sampling", {}).update(sampling_overrides)
             config.effective_scan()
@@ -135,8 +148,10 @@ def execute(args):
             failures = 0
             setup_s = 0.0
             for video in queue:
-                unfinished = store.rows("SELECT id FROM video_scans WHERE video_id=? AND "
-                                        "status!='completed' LIMIT 1", (video["id"],))
+                unfinished = store.rows(
+                    "SELECT id FROM video_scans WHERE video_id=? AND status!='completed' LIMIT 1",
+                    (video["id"],),
+                )
                 if video["status"] == "scanned" and not args.reprocess and not unfinished:
                     log.info(
                         "Already scanned: %s (use --reprocess to create a new scan)", video["id"]
@@ -173,11 +188,14 @@ def execute(args):
                         profile=profile,
                     )
                     if profile and completed:
-                        result = profile.result(video, merge_settings(config.data),
-                                                model_setup_s=setup_s)
+                        result = profile.result(
+                            video, merge_settings(config.data), model_setup_s=setup_s
+                        )
                         write_profile(perf_output, result)
-                        print(f"Scan profile: {perf_output.resolve()} "
-                              f"({result['realtime_factor']}x real time)")
+                        print(
+                            f"Scan profile: {perf_output.resolve()} "
+                            f"({result['realtime_factor']}x real time)"
+                        )
                 except Exception as exc:
                     failures += 1
                     # A failed replacement must leave the old completed corpus usable.
@@ -195,14 +213,20 @@ def execute(args):
             target = config.data.get("query", {}).get("target_name")
             selected_scans = store.selected_scan_ids()
             cluster_count = len(store.selected_clusters())
-            print(f"Saved corpus: {cluster_count} text clusters across "
-                  f"{len(selected_scans)} completed video scans.")
+            print(
+                f"Saved corpus: {cluster_count} text clusters across "
+                f"{len(selected_scans)} completed video scans."
+            )
             if target:
-                print(f"Search target: {target!r}; {len(hits)} candidates. "
-                      "Try 'tf2scan query --name NAME' to search another name without rescanning.")
+                print(
+                    f"Search target: {target!r}; {len(hits)} candidates. "
+                    "Try 'tf2scan query --name NAME' to search another name without rescanning."
+                )
             else:
-                print("No search target configured. Use 'tf2scan query --name NAME' "
-                      "to search the saved OCR text.")
+                print(
+                    "No search target configured. Use 'tf2scan query --name NAME' "
+                    "to search the saved OCR text."
+                )
             print(f"{failures} failures; {config.root / 'report/index.html'}")
             return int(bool(failures))
         if args.command == "query":
@@ -210,12 +234,19 @@ def execute(args):
             if query_id is None:
                 raise ValueError("Set query.target_name or pass --name")
             hits = export_report(store, query_id, config.data.get("export_rows", False))
-            print(f"Query {query_id} for {args.name or config.data['query']['target_name']!r}: "
-                  f"{len(hits)} candidates; no OCR performed")
+            print(
+                f"Query {query_id} for {args.name or config.data['query']['target_name']!r}: "
+                f"{len(hits)} candidates; no OCR performed"
+            )
         elif args.command == "report":
-            hits = export_report(store, args.query_id, args.rows,
-                                 text_clusters=args.text_clusters,
-                                 scan_id=args.scan_id, run_id=args.run_id)
+            hits = export_report(
+                store,
+                args.query_id,
+                args.rows,
+                text_clusters=args.text_clusters,
+                scan_id=args.scan_id,
+                run_id=args.run_id,
+            )
             print(f"{len(hits)} candidates: {config.root / 'report/index.html'}")
         elif args.command == "review":
             with store.transaction() as db:

@@ -8,8 +8,15 @@ def resolve_stream(video):
     """Resolve a VOD to one video-only media URL without retaining a download."""
     from yt_dlp import YoutubeDL
 
-    with YoutubeDL(with_node(format="bestvideo[height<=720]/bestvideo", noplaylist=True,
-                             quiet=True, skip_download=True, retries=2)) as ydl:
+    with YoutubeDL(
+        with_node(
+            format="bestvideo[height<=720]/bestvideo",
+            noplaylist=True,
+            quiet=True,
+            skip_download=True,
+            retries=2,
+        )
+    ) as ydl:
         info = ydl.extract_info(video["source_url"], download=False)
     if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
         raise ValueError("Live streams are unsupported; index a bounded VOD")

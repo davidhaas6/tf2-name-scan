@@ -18,8 +18,16 @@ log = logging.getLogger(__name__)
 
 
 def ingest(
-    store, config, video, recognizer, fps=None, reprocess=False, frame_source=None, *, detector=None,
-    profile=None
+    store,
+    config,
+    video,
+    recognizer,
+    fps=None,
+    reprocess=False,
+    frame_source=None,
+    *,
+    detector=None,
+    profile=None,
 ):
     if config.data.get("pipeline", "detection") != "legacy_hud":
         if detector is None:

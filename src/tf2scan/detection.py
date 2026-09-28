@@ -31,8 +31,7 @@ def detector_input(frame, resize="native", limit_side_len=960):
     elif resize != "native":
         raise ValueError("Unknown detector resize policy")
     sx, sy = frame.working_to_source
-    return image, (sx * frame.image.width / image.width,
-                   sy * frame.image.height / image.height)
+    return image, (sx * frame.image.width / image.width, sy * frame.image.height / image.height)
 
 
 def to_source_detection(identity, polygon, confidence, tensor_to_source, source_offset=(0, 0)):
@@ -40,8 +39,9 @@ def to_source_detection(identity, polygon, confidence, tensor_to_source, source_
         raise ValueError("Detector confidence must be finite and within [0,1]")
     sx, sy = tensor_to_source
     ox, oy = source_offset
-    return Detection(str(identity), tuple((ox + x * sx, oy + y * sy) for x, y in polygon),
-                     confidence)
+    return Detection(
+        str(identity), tuple((ox + x * sx, oy + y * sy) for x, y in polygon), confidence
+    )
 
 
 class FakeDetector:

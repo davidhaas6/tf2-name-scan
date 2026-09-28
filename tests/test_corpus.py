@@ -166,8 +166,9 @@ def test_blank_rows_discarded_but_borderline_retained(config):
         assert not store.rows("SELECT * FROM hits")
         assert store.rows("SELECT * FROM query_matches")
         assert export_report(store, query_id) == []
-        assert "No candidates for abcdefghY" in (
-            config.root / "report/index.html").read_text(encoding="utf-8")
+        assert "No candidates for abcdefghY" in (config.root / "report/index.html").read_text(
+            encoding="utf-8"
+        )
 
 
 def test_export_has_provenance(config):

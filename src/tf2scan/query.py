@@ -38,20 +38,27 @@ def run_query(store, target, aliases=(), *, scan_id=None, run_id=None, matching=
             )
             candidates = []
             for alias in aliases:
-                scored = [(obs, alias_score(obs["raw_text"], alias,
-                           settings["short_name_length"])) for obs in observations]
+                scored = [
+                    (obs, alias_score(obs["raw_text"], alias, settings["short_name_length"]))
+                    for obs in observations
+                ]
                 for obs, score in scored:
                     if score >= 0.65:
                         db.execute(
                             "INSERT OR REPLACE INTO query_matches VALUES (?,?,?,?)",
                             (query_id, obs["id"], alias, score),
                         )
-                if not promoted([(obs["timestamp_s"], score) for obs, score in scored],
-                                settings["strong"], settings["weak"], settings["gap_s"]):
+                if not promoted(
+                    [(obs["timestamp_s"], score) for obs, score in scored],
+                    settings["strong"],
+                    settings["weak"],
+                    settings["gap_s"],
+                ):
                     continue
                 best, score = max(scored, key=lambda pair: pair[1])
-                support = len({obs["timestamp_s"] for obs, value in scored
-                               if value >= settings["weak"]})
+                support = len(
+                    {obs["timestamp_s"] for obs, value in scored if value >= settings["weak"]}
+                )
                 candidates.append((score, support, alias, best))
             if not candidates:
                 continue

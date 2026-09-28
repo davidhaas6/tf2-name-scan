@@ -42,7 +42,9 @@ def add_local(store, config, path, profile=None):
     path = Path(path).resolve()
     stream, duration = probe(path)
     video_id = "local-" + hashlib.sha256(str(path).encode()).hexdigest()[:20]
-    name = config.profile(override=profile)[0] if config.data.get("pipeline") == "legacy_hud" else None
+    name = (
+        config.profile(override=profile)[0] if config.data.get("pipeline") == "legacy_hud" else None
+    )
     store.upsert_video(
         {
             "id": video_id,
@@ -93,8 +95,11 @@ def index_sources(store, config, sources=None):
             if not info:
                 return
             reason = rejection(info, config.data.get("filters", {}))
-            name = (config.profile(info.get("channel_id"))[0]
-                    if config.data.get("pipeline") == "legacy_hud" else None)
+            name = (
+                config.profile(info.get("channel_id"))[0]
+                if config.data.get("pipeline") == "legacy_hud"
+                else None
+            )
             heights = [f.get("height") or 0 for f in info.get("formats", [])]
             store.upsert_video(
                 {
