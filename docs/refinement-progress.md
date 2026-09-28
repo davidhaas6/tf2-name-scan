@@ -12,8 +12,8 @@ reprocess preserves the previous completed scan. The R01–R03 notes below descr
 their historical boundaries; their references to missing Paddle construction,
 singleton clustering and gated detection CLI scans no longer describe current code.
 
-Latest recorded validation: 80 tests pass, Ruff passes, and a real Paddle scan
-completed two six-second local chunks of `gameplay-smoke.mp4`. The earlier local
+Current validation: 85 tests pass and Ruff passes for `src` and `tests`. A real Paddle scan
+completed two six-second local chunks of `gameplay-smoke.mp4` during R06/R07 validation. The earlier local
 scanner validation recorded 69 tests and real Paddle inference on two 12-second
 excerpts; see [local scanner validation](local-scanner-validation.md) for model
 identities and inspected examples. R09–R11 add three-second query promotion,
@@ -21,6 +21,14 @@ sparse evidence retention/cleanup, and lineage-aware reports/exports. R12–R14
 (labeled video evaluation, end-to-end metrics, and remaining CLI/documentation)
 follow. R15 model comparisons are deferred. Live remote/model integration remains
 environment-dependent; the remote streaming path has deterministic mocked coverage.
+
+## 2026-09-28 performance follow-up
+
+Routine evidence compaction now considers only clusters changed by a batch and paths whose references were removed. Crash-orphan recovery walks the corpus once per open store before its first detected scan. The recognizer defaults to oneDNN on CPU; detector oneDNN remains disabled after failing on the installed runtime. A four-frame pooling option preserves frame/result order but stays at one frame by default because its single trial did not improve recognition time and changed some OCR strings. A four-thread trial was also slower than the default setting.
+
+On `input/uw1.mp4` at 1 sampled frame/second in the top-right region, the short local profile processed 11 frames and 107 crops in 16.031 scan-wall seconds for 11.486 seconds of video (RTF 1.396). That excludes 4.880 seconds of model setup and includes 4.200 seconds of startup orphan recovery. Without startup recovery, the measured scan work was 11.831 seconds (about 1.03× real time). Batch compaction took 0.104 seconds across three commits, down from 11.965 seconds in the original detailed profile.
+
+Four later online scans of 148–477 catalog seconds each recorded RTF 0.682–0.836 using per-video database timestamps. Three had the expected 1-fps frame count; the 477-second entry had only 455 frames and requires source-duration verification. See [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28) for the measurements and limits. These runs demonstrate faster-than-real-time recorded processing for the longer clips, while repeatability, complete source coverage for one clip, and player-name accuracy remain unverified.
 
 ## R09–R11 — query, evidence and report transition
 

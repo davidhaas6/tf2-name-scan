@@ -452,6 +452,8 @@ Provisional MVP gates:
 
 These are product targets, not assumptions. Early benchmark reports should show their uncertainty and guide dataset expansion; they should not claim the gates are statistically established until the intervals and source coverage support that conclusion.
 
+**Performance status (2026-09-28):** The near-term engineering milestone is RTF ≤ 1 at 1 sampled frame/second in the top-right region, as defined in [performance experiments](performance-experiments.md). It does not replace the 10× product gate above (RTF ≤ 0.1). The short `uw1.mp4` profile measured RTF 1.396 with model setup excluded and startup orphan recovery included. Four later online scans recorded RTF 0.682–0.836 by catalog duration, though one stopped sampling before its catalog end; repeatability and name coverage are not yet established. See [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28).
+
 ## 7. Later: uncertain-crop recovery model
 
 Only after benchmarking the small recognizer, add an OCR-specific VLM for ambiguous clusters - for example, HunyuanOCR. It is relevant because its published evaluation explicitly includes game, screen, and video text, and it can return text with coordinates.

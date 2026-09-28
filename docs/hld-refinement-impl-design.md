@@ -1,10 +1,12 @@
 # HLD refinement: implementation design and scope
 
-Status: R01–R11 core implemented through lineage-aware search, sparse evidence and reports; R12–R13 and remaining R14 work are next. Updated 2026-09-26.
+Status: R01–R11 core implemented through lineage-aware search, sparse evidence and reports; R12–R13 and remaining R14 work are next. Performance follow-up updated 2026-09-28.
 Audit date: 2026-09-22.  
 Implementation baseline: `90f842e`; repository HEAD at audit: `605a562`.  
 Design changes: `666bc0a` (adaptive detection and lineage) and `605a562` (streaming MVP refinements).  
 Authority: [high-level-design.md](high-level-design.md), as of `605a562`.
+
+The audit, proposed work packages and milestone counts below preserve their original dates. For current performance and validation status, see [refinement progress](refinement-progress.md#2026-09-28-performance-follow-up) and [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28). The latest local check has 85 passing tests and Ruff passing. The 11-second top-right clip measured RTF 1.396 with model setup excluded; four later online scans recorded RTF 0.682–0.836, with one source-duration discrepancy still open.
 
 ## 1. Purpose and original audit conclusions
 
@@ -297,7 +299,7 @@ When implementing, run `uv run pytest` and `uv run ruff check src tests` plus th
 | R04, R05, R08 core | `6a65872`, `c403e2f` | Specified Paddle detector/recognizer, deterministic filtering and retention, geometry/motion clustering and local CLI scanning |
 | R06, R07 integration | `b35d698` | Bounded local/remote chunks, incremental persistence, retry diagnostics, tracker restoration and completed-chunk resume |
 
-Latest recorded validation: **80 tests passed** and Ruff passed for `src` and `tests`. A real Paddle scan completed two six-second local chunks of `gameplay-smoke.mp4` (12 sampled frames, 86 observations, 67 clusters) during R06/R07 validation; R09–R11 have deterministic tests but no new real-video accuracy measurement. Node-backed indexing of two configured YouTube URLs and video-only stream resolution for `ZiZmodw-yRc` succeeded, but a full remote OCR scan has not been measured. The earlier R01–R03 foundation passed 52 tests, including real FFmpeg fixtures. Original v1/v2 migration definitions and `high-level-design.md` remain unchanged. These results establish implementation behavior, not measured production accuracy or throughput. See [refinement-progress.md](refinement-progress.md) for details.
+At the R11 milestone, **80 tests passed** and Ruff passed for `src` and `tests`. A real Paddle scan completed two six-second local chunks of `gameplay-smoke.mp4` (12 sampled frames, 86 observations, 67 clusters) during R06/R07 validation; R09–R11 have deterministic tests but no new real-video accuracy measurement. Node-backed indexing of two configured YouTube URLs and video-only stream resolution for `ZiZmodw-yRc` succeeded, but a full remote OCR scan has not been measured. The earlier R01–R03 foundation passed 52 tests, including real FFmpeg fixtures. Original v1/v2 migration definitions and `high-level-design.md` remain unchanged. These results establish implementation behavior, not measured production accuracy or throughput. See [refinement-progress.md](refinement-progress.md) for details.
 
 The current scanner runs the Paddle models, filters and clusters detected text, commits bounded chunks incrementally, and resumes completed chunks. R09–R11 use three-second query promotion, compact evidence, and export lineage-aware hits and text clusters. Labeled video evaluation, end-to-end metrics, and remaining CLI/documentation work remain R12–R14. R15 model comparisons are deferred.
 
