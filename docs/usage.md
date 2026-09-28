@@ -20,6 +20,15 @@ This can reduce detection and recognition work, but names elsewhere in the frame
 will be missed. Set `sampling.region: full` to scan the whole frame. Changing the
 region requires `scan --reprocess` for videos already scanned.
 
+The CPU example enables `recognizer.enable_mkldnn: true`. On `input/uw1.mp4`,
+recognition took 19.91 seconds without it and about 5–6 seconds in oneDNN trials
+with the same 107 crops. Keep `detector.enable_mkldnn: false`: that setting failed
+on the installed Paddle runtime. The example keeps `recognizer.pool_frames: 1`
+because four-frame pooling did not improve recognition time and changed some OCR
+strings. The default `cpu_threads: 10` matches the runtime's existing setting;
+the four-thread trial was slower. These short, single-clip measurements are not
+an accuracy evaluation.
+
 ## Scan a local video
 
 To profile one cached local video with the detection pipeline, run:
@@ -33,21 +42,22 @@ The flag is optional. Add `--reprocess` if that video was already scanned, and
 time, video duration, real-time factor (`wall time / video duration`), source
 working and detector-input resolution, CPU/platform, frame and crop counts, effective scan
 settings, model setup time, and stage times. Stage times cover decoding,
-detection, crop preparation, recognition, and persistence/evidence. `other`
-includes scan bookkeeping, final cleanup, and time outside those measured
-sections. `largest_stage` names the largest measured category. Model setup is
+detection, crop preparation, recognition, persistence/evidence, and startup
+orphan recovery. `other` includes scan bookkeeping and time outside those
+measured sections. `largest_stage` names the largest measured category. Model setup is
 reported separately and is excluded from the scan real-time factor. Profiling
 currently applies to the detection pipeline and one video per command.
 
 `persistence_detail_s` breaks the batch persistence timer into the SQLite/tracking
 transaction (including image saves), image saves, evidence compaction, and the
-orphan sweep's database-reference lookup and file walk. The `*_other` values
+orphan sweep's database-reference lookup and file walk in older profiles. The `*_other` values
 subtract nested timings so they do not double-count. `persistence_counts`
-records batch commits, compaction/sweep calls, images saved, and asset files
-checked. These details cover batch commits; scan startup and final cleanup
-remain in the top-level `other` stage.
+records batch commits, compaction calls, images saved, and asset files
+checked. Routine compaction now visits changed clusters and removed evidence
+paths; a full orphan sweep runs once at startup per open corpus. Startup time
+appears as `startup_cleanup` in new profiles.
 `persistence_batches` gives the same timers and file count for each batch, so
-you can see whether the sweep cost repeats as the corpus grows.
+you can see whether routine cleanup cost grows as the corpus grows.
 
 ```powershell
 uv run tf2scan scan --local "C:\videos\game.mp4" --name AnotherPlayer

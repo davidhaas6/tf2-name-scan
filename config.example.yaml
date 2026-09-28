@@ -3,18 +3,65 @@ output_dir: output
 sources: []
 pipeline: detection
 # Example search name: replace it, use `scan --name NAME`, or search later with `query --name NAME`.
-query: {target_name: HumanWorm, aliases: []}
-sampling: {fps: 1, chunk_seconds: 600, max_height: 720, region: top_right}
-detector: {backend: paddle, name: PP-OCRv6-small-det, weights: null, device: cpu,
-           batch_size: 1, confidence: 0.3, resize: native, limit_side_len: 960}
-recognizer: {backend: paddle, name: PP-OCRv6-small-rec, weights: null, device: cpu,
-             batch_size: 32}
-crops: {min_height: 6, duplicate_iou: 0.85, containment: 0.90, max_per_frame: 64,
-        padding: 2, confidence_floor: 0.1}
-clustering: {gap_s: 3, similarity: 0.82, center_distance: 0.05, motion_tolerance: 0.5}
-matching: {strong: 0.95, weak: 0.82, gap_s: 3, short_name_length: 4}
-acquisition: {attempts: 3, backoff_s: 2, max_backoff_s: 30, streams_per_host: 1,
-              overlap_s: 3, cache_ttl_s: 0}
-persistence: {commit_interval_s: 20, max_rows: 10000, max_bytes: 16777216,
-              wal_checkpoint_pages: 1000, wal_size_bytes: 67108864}
-evidence: {policy: representative, full_frames: false, max_candidates: 4, compact: true}
+query: { target_name: HumanWorm, aliases: [] }
+sampling: { fps: 1, chunk_seconds: 600, max_height: 720, region: top_right }
+detector:
+  {
+    backend: paddle,
+    name: PP-OCRv6-small-det,
+    weights: null,
+    device: cpu,
+    batch_size: 1,
+    enable_mkldnn: false,
+    cpu_threads: 10,
+    confidence: 0.3,
+    resize: native,
+    limit_side_len: 960,
+  }
+recognizer:
+  {
+    backend: paddle,
+    name: PP-OCRv6-small-rec,
+    weights: null,
+    device: cpu,
+    batch_size: 32,
+    pool_frames: 1,
+    enable_mkldnn: true,
+    cpu_threads: 10,
+  }
+crops:
+  {
+    min_height: 6,
+    duplicate_iou: 0.85,
+    containment: 0.90,
+    max_per_frame: 64,
+    padding: 2,
+    confidence_floor: 0.1,
+  }
+clustering:
+  { gap_s: 3, similarity: 0.82, center_distance: 0.05, motion_tolerance: 0.5 }
+matching: { strong: 0.95, weak: 0.82, gap_s: 3, short_name_length: 4 }
+acquisition:
+  {
+    attempts: 3,
+    backoff_s: 2,
+    max_backoff_s: 30,
+    streams_per_host: 1,
+    overlap_s: 3,
+    cache_ttl_s: 0,
+  }
+persistence:
+  {
+    commit_interval_s: 20,
+    max_rows: 10000,
+    max_bytes: 16777216,
+    wal_checkpoint_pages: 1000,
+    wal_size_bytes: 67108864,
+  }
+evidence:
+  {
+    policy: representative,
+    full_frames: false,
+    max_candidates: 4,
+    compact: true,
+  }
