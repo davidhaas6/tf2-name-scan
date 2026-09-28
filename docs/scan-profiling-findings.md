@@ -46,3 +46,15 @@ The measured transaction and image-save times are small relative to the sweep. T
 - The top-level `other` stage includes work outside timed decoding, detection, crop preparation, recognition, and batch persistence. [`detected_ingestion.py`](../src/tf2scan/detected_ingestion.py) also invokes evidence cleanup before batch processing and after scan completion; those calls are not broken out in the current detailed profile. Their share of `other` is unmeasured.
 
 Open questions for further diagnosis: the exact cost of startup/final cleanup, whether longer scans show the same per-sweep cost as the asset corpus grows, and how the top-right crop changes player-name coverage. Any cleanup change needs to preserve evidence references and interrupted-scan recovery behavior.
+
+## oneDNN trial (2026-09-28)
+
+The scanner now accepts `detector.enable_mkldnn` and `recognizer.enable_mkldnn`, both defaulting to `false`. The trial reprocessed the same `input/uw1.mp4` clip at 1 fps with the top-right detector region, using the same output corpus. All completed runs had 11 frames and 107 recognized crops. Model setup remains outside scan wall time. These are single runs, and the corpus and filesystem cache were not reset between them.
+
+| Run | Wall | Detection | Recognition | Persistence/evidence | Other |
+|---|---:|---:|---:|---:|---:|
+| Earlier CPU baseline | 44.493 s | 5.046 s | 18.622 s | 12.130 s | 8.165 s |
+| oneDNN recognizer only | 52.663 s | 7.521 s | 8.379 s | 21.918 s | 13.809 s |
+| CPU repeat after trial | 60.973 s | 6.493 s | 21.794 s | 19.078 s | 12.837 s |
+
+With oneDNN on both models, detector inference failed on its first frame with `NotImplementedError: ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`. That run produced no successful profile. Recognizer-only oneDNN completed and reduced recognition time by 55% versus the earlier baseline and 62% versus the adjacent CPU repeat. Total scan time was 14% below the adjacent repeat but above the earlier baseline because persistence and other time varied greatly. The runs used separate cached model directories; their inference files have matching SHA-256 values, while one directory also contains a Hugging Face cache JSON file that makes `file_hash` differ. The results support further recognizer-only testing, not enabling oneDNN for the detector on this runtime. The ignored trial profiles are `output/top-right-mkldnn-rec-profile.json` and `output/top-right-cpu-repeat-profile.json`.

@@ -45,7 +45,7 @@ class PaddleDetector:
         self.metadata = metadata(
             engine,
             MODEL_NAMES.get(settings["name"], settings["name"]),
-            {**settings, "color": "BGR", "stride_rounding": 32, "enable_mkldnn": False},
+            {**settings, "color": "BGR", "stride_rounding": 32},
         )
 
     def detect(self, frames):
@@ -91,7 +91,7 @@ class PaddleRecognizer:
         self.metadata = metadata(
             engine,
             MODEL_NAMES.get(settings["name"], settings["name"]),
-            {**settings, "color": "BGR", "enable_mkldnn": False},
+            {**settings, "color": "BGR"},
         )
         self.model_version = self.metadata.version
 
@@ -134,7 +134,7 @@ def create_models(config):
             model_name=MODEL_NAMES.get(s["name"], s["name"]),
             model_dir=str(config.resolve(s["weights"])) if s["weights"] else None,
             device=s["device"],
-            enable_mkldnn=False,
+            enable_mkldnn=s["enable_mkldnn"],
         )
 
     detector = construct(TextDetection, "detector")

@@ -16,6 +16,7 @@ DEFAULTS = {
         "weights": None,
         "device": "cpu",
         "batch_size": 1,
+        "enable_mkldnn": False,
         "confidence": 0.3,
         "resize": "native",
         "limit_side_len": 960,
@@ -27,6 +28,7 @@ DEFAULTS = {
         "weights": None,
         "device": "cpu",
         "batch_size": 32,
+        "enable_mkldnn": False,
     },
     "crops": {
         "min_height": 6,
