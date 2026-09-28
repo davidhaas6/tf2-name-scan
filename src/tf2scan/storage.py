@@ -83,6 +83,7 @@ ALTER TABLE chunk_attempts ADD COLUMN media_bytes INTEGER;
 class Store(LineageStore):
     def __init__(self, root):
         self.root = root
+        self._orphan_recovery_done = False
         root.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(root / "results.sqlite3")
         self.db.row_factory = sqlite3.Row
@@ -209,12 +210,19 @@ class Store(LineageStore):
                         path.unlink(missing_ok=True)
         self.prune_orphan_evidence()
 
-    def compact_evidence(self, scan_id, max_candidates=4, aliases=(), profile=None):
+    def compact_evidence(self, scan_id, max_candidates=4, aliases=(), profile=None,
+                         cluster_ids=None):
         """Keep actual representative and bounded query-relevant observation crops."""
         from .matching import alias_score
 
-        clusters = self.rows("SELECT id,representative_observation_id FROM text_clusters "
-                             "WHERE video_scan_id=?", (scan_id,))
+        if cluster_ids is not None and not cluster_ids:
+            return
+        query = "SELECT id,representative_observation_id FROM text_clusters WHERE video_scan_id=?"
+        parameters = [scan_id]
+        if cluster_ids is not None:
+            query += f" AND id IN ({','.join('?' for _ in cluster_ids)})"
+            parameters.extend(cluster_ids)
+        clusters = self.rows(query, parameters)
         if profile:
             profile.counts["compaction_clusters_examined"] += len(clusters)
         keep = set()
@@ -231,21 +239,87 @@ class Store(LineageStore):
                      and o["id"] != cluster["representative_observation_id"]),
                     key=lambda item: (-item[0], item[1]))
                 keep.update(identity for score, identity in ranked[:max_candidates] if score >= 0.65)
-        discard = self.rows(
-            "SELECT id,crop_path FROM observations WHERE video_scan_id=? AND crop_path IS NOT NULL",
-            (scan_id,))
+        if cluster_ids is None:
+            discard = self.rows(
+                "SELECT id,crop_path FROM observations WHERE video_scan_id=? AND crop_path IS NOT NULL",
+                (scan_id,))
+        else:
+            discard = self.rows(
+                "SELECT DISTINCT o.id,o.crop_path FROM observations o "
+                "JOIN cluster_observations co ON co.observation_id=o.id "
+                f"WHERE co.cluster_id IN ({','.join('?' for _ in cluster_ids)}) "
+                "AND o.crop_path IS NOT NULL", tuple(cluster_ids))
         if profile:
             profile.counts["compaction_crops_examined"] += len(discard)
+        removed = [row["crop_path"] for row in discard if row["id"] not in keep]
         with self.transaction() as db:
             for row in discard:
                 if row["id"] not in keep:
                     db.execute("UPDATE observations SET crop_path=NULL WHERE id=?", (row["id"],))
-            db.execute(
-                """UPDATE sampled_frames SET full_frame_path=NULL WHERE video_scan_id=?
-                AND id NOT IN (SELECT o.sampled_frame_id FROM observations o
-                JOIN text_clusters c ON c.representative_observation_id=o.id
-                WHERE c.video_scan_id=?)""", (scan_id, scan_id))
-        self.prune_orphan_evidence(profile=profile)
+            if cluster_ids is None:
+                frames = db.execute(
+                    """SELECT full_frame_path FROM sampled_frames WHERE video_scan_id=?
+                    AND full_frame_path IS NOT NULL AND id NOT IN
+                    (SELECT o.sampled_frame_id FROM observations o JOIN text_clusters c
+                    ON c.representative_observation_id=o.id WHERE c.video_scan_id=?)""",
+                    (scan_id, scan_id)).fetchall()
+                removed.extend(row[0] for row in frames)
+                db.execute(
+                    """UPDATE sampled_frames SET full_frame_path=NULL WHERE video_scan_id=?
+                    AND id NOT IN (SELECT o.sampled_frame_id FROM observations o
+                    JOIN text_clusters c ON c.representative_observation_id=o.id
+                    WHERE c.video_scan_id=?)""", (scan_id, scan_id))
+            else:
+                placeholders = ','.join('?' for _ in cluster_ids)
+                frames = db.execute(
+                    "SELECT DISTINCT f.full_frame_path FROM sampled_frames f "
+                    "JOIN observations o ON o.sampled_frame_id=f.id "
+                    "JOIN cluster_observations co ON co.observation_id=o.id "
+                    f"WHERE co.cluster_id IN ({placeholders}) "
+                    "AND f.full_frame_path IS NOT NULL AND f.id NOT IN "
+                    "(SELECT o2.sampled_frame_id FROM observations o2 JOIN text_clusters c "
+                    "ON c.representative_observation_id=o2.id)", tuple(cluster_ids)).fetchall()
+                removed.extend(row[0] for row in frames)
+                db.executemany("UPDATE sampled_frames SET full_frame_path=NULL WHERE full_frame_path=?",
+                               [(row[0],) for row in frames])
+        if cluster_ids is None:
+            self.prune_orphan_evidence(profile=profile)
+        else:
+            self.prune_evidence_paths(removed, profile=profile)
+
+    def prune_evidence_paths(self, paths, profile=None):
+        """Delete only committed, unreferenced scanner-owned evidence paths."""
+        assets = (self.root / "report/assets").resolve()
+        root = self.root.resolve()
+        if not assets.is_relative_to(root):
+            return
+        for value in set(paths):
+            if not value:
+                continue
+            relative = Path(value)
+            if (relative.is_absolute() or len(relative.parts) != 4
+                    or relative.parts[:2] != ("report", "assets")
+                    or not re.fullmatch(r"[0-9a-f]{16}-[0-9a-f]{32}", relative.parts[2])):
+                continue
+            if not re.fullmatch(r"\d+-(row\.png|frame\.jpg)", relative.parts[3]):
+                continue
+            candidate = self.root / relative
+            if (candidate.is_symlink() or candidate.parent.is_symlink()
+                    or not candidate.resolve().is_relative_to(assets)):
+                continue
+            if profile:
+                profile.counts["asset_files_checked"] += 1
+            referenced = self.db.execute(
+                "SELECT 1 FROM text_clusters WHERE evidence_path=? OR frame_path=? "
+                "UNION SELECT 1 FROM observations WHERE crop_path=? OR legacy_evidence_path=? "
+                "UNION SELECT 1 FROM sampled_frames WHERE full_frame_path=? LIMIT 1",
+                (value,) * 5).fetchone()
+            if profile:
+                profile.counts["referenced_paths_examined"] += 1
+            if not referenced and candidate.is_file():
+                candidate.unlink()
+                if profile:
+                    profile.counts["orphan_files_deleted"] += 1
 
     def prune_orphan_evidence(self, profile=None):
         """Recover files left by a killed process; only touch scanner-owned names.
@@ -293,3 +367,9 @@ class Store(LineageStore):
                 folder.rmdir()
         if profile:
             profile.seconds["evidence_file_walk"] += time.perf_counter() - walk_started
+
+    def recover_orphan_evidence(self):
+        """Run crash recovery once per open corpus, before its first scan write."""
+        if not self._orphan_recovery_done:
+            self.prune_orphan_evidence()
+            self._orphan_recovery_done = True

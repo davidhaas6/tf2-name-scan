@@ -16,6 +16,7 @@ DEFAULTS = {
         "weights": None,
         "device": "cpu",
         "batch_size": 1,
+        "cpu_threads": 10,
         "enable_mkldnn": False,
         "confidence": 0.3,
         "resize": "native",
@@ -28,7 +29,9 @@ DEFAULTS = {
         "weights": None,
         "device": "cpu",
         "batch_size": 32,
-        "enable_mkldnn": False,
+        "pool_frames": 1,
+        "cpu_threads": 10,
+        "enable_mkldnn": True,
     },
     "crops": {
         "min_height": 6,
@@ -146,6 +149,8 @@ def validate(settings):
         raise ValueError("Unsupported detector backend")
     if settings["recognizer"]["backend"] not in {"paddle", "openocr", "fake"}:
         raise ValueError("Unsupported recognizer backend")
+    if settings["detector"]["cpu_threads"] != settings["recognizer"]["cpu_threads"]:
+        raise ValueError("Paddle detector and recognizer share a CPU thread setting")
     if settings["detector"]["resize"] not in {"native", "min"}:
         raise ValueError("detector.resize must be native or min")
     if settings["sampling"]["region"] not in {"full", "top_right"}:

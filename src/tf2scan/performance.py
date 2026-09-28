@@ -32,7 +32,7 @@ class ScanProfile:
         wall = time.perf_counter() - self.started
         stages = {key: round(self.seconds[key], 3) for key in
                   ("decoding", "detection", "crop_preparation", "recognition",
-                   "persistence_evidence")}
+                  "persistence_evidence", "startup_cleanup")}
         stages["other"] = round(max(0, wall - sum(self.seconds[key] for key in stages)), 3)
         transaction = self.seconds["persistence_transaction"]
         image_save = self.seconds["evidence_image_save"]

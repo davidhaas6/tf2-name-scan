@@ -54,6 +54,30 @@ def _prepare_frame(frame, detections, recognizer, settings, profile=None):
     return frame, len(detections), duplicates, capped, len(recognized), accepted
 
 
+def _prepare_frames(frames, proposals, recognizer, settings, profile=None):
+    """Recognize one ordered crop pool, then restore each frame's result slice."""
+    prepared_frames = []
+    pooled = []
+    for frame, detections in zip(frames, proposals):
+        if profile:
+            with profile.measure("crop_preparation"):
+                crops, duplicates, capped = select_crops(frame, detections, settings)
+            profile.crops += len(crops)
+        else:
+            crops, duplicates, capped = select_crops(frame, detections, settings)
+        prepared_frames.append((frame, len(detections), duplicates, capped, len(crops)))
+        pooled.extend(crops)
+    recognized = recognize_crops(pooled, recognizer, settings, profile)
+    entries = []
+    offset = 0
+    for frame, raw_count, duplicates, capped, count in prepared_frames:
+        accepted = [(crop, result) for crop, result in recognized[offset:offset + count]
+                    if useful_text(result, settings["crops"]["confidence_floor"])]
+        entries.append((frame, raw_count, duplicates, capped, count, accepted))
+        offset += count
+    return entries
+
+
 def _chunks(duration, seconds):
     for sequence in range(math.ceil(duration / seconds)):
         start = sequence * seconds
@@ -83,6 +107,7 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
                   recognizer, settings, aliases=(), profile=None):
     """Inference finishes before entering a write transaction; watermark commits last."""
     transaction_started = time.perf_counter() if profile else None
+    changed_clusters = set()
     if profile:
         profile.counts["batch_commits"] += 1
         keys = ("persistence_transaction", "evidence_image_save", "evidence_compaction",
@@ -175,6 +200,7 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
                         normalization_version=NORMALIZATION_VERSION, evidence_path=crop_path,
                         frame_path=frame_path, evidence_timestamp_s=frame.timestamp_s,
                     )
+                changed_clusters.add(cluster)
                 track = tracker.observe(cluster, frame, crop, result)
                 db.execute("UPDATE text_clusters SET motion_summary_json=? WHERE id=?",
                            (json.dumps(track.motion()), cluster))
@@ -189,9 +215,11 @@ def _commit_batch(store, scan_id, chunk_id, video_id, folder, tracker, entries,
             profile.counts["compaction_calls"] += 1
             with profile.measure("evidence_compaction"):
                 store.compact_evidence(scan_id, settings["evidence"]["max_candidates"],
-                                       aliases, profile=profile)
+                                       aliases, profile=profile,
+                                       cluster_ids=changed_clusters)
         else:
-            store.compact_evidence(scan_id, settings["evidence"]["max_candidates"], aliases)
+            store.compact_evidence(scan_id, settings["evidence"]["max_candidates"], aliases,
+                                   cluster_ids=changed_clusters)
     if profile:
         profile.persistence_batches.append({
             "frames": len(entries),
@@ -265,7 +293,11 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
         hashlib.sha256(video["id"].encode()).hexdigest()[:16] + "-" + uuid.uuid4().hex)
     query = config.data.get("query", {})
     aliases = [query["target_name"], *query.get("aliases", [])] if query.get("target_name") else []
-    store.prune_orphan_evidence()
+    if profile:
+        with profile.measure("startup_cleanup"):
+            store.recover_orphan_evidence()
+    else:
+        store.recover_orphan_evidence()
     tracker = TextTracker.restore(settings["clustering"], store, scan_id)
     source_used = False
     try:
@@ -310,9 +342,11 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
                         while True:
                             if profile:
                                 with profile.measure("decoding"):
-                                    batch = list(_take(frames, settings["detector"]["batch_size"]))
+                                    batch = list(_take(frames, max(settings["detector"]["batch_size"],
+                                                                   settings["recognizer"]["pool_frames"])))
                             else:
-                                batch = list(_take(frames, settings["detector"]["batch_size"]))
+                                batch = list(_take(frames, max(settings["detector"]["batch_size"],
+                                                               settings["recognizer"]["pool_frames"])))
                             if not batch:
                                 break
                             if any(not isinstance(frame, Frame) for frame in batch):
@@ -332,6 +366,7 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
                                     for frame in batch
                                 ]
                                 proposals = detect_frames(detector, detector_batch)
+                            eligible, eligible_proposals = [], []
                             for frame, detections in zip(batch, proposals):
                                 if frame.timestamp_s < start - 1e-8 or frame.timestamp_s >= end - 1e-8:
                                     continue
@@ -345,8 +380,12 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
                                                                      frame.source_height]
                                         profile.working_resolution = [frame.image.width,
                                                                       frame.image.height]
-                                pending.append(_prepare_frame(frame, detections, recognizer, settings,
-                                                              profile))
+                                eligible.append(frame)
+                                eligible_proposals.append(detections)
+                            for entry in _prepare_frames(eligible, eligible_proposals, recognizer,
+                                                         settings, profile):
+                                frame = entry[0]
+                                pending.append(entry)
                                 pending_bytes += frame.image.width * frame.image.height * 3
                                 first_time = frame.timestamp_s if first_time is None else first_time
                                 limits = settings["persistence"]
@@ -406,10 +445,8 @@ def ingest_detected(store, config, video, detector, recognizer, *, fps=None,
             db.execute("UPDATE videos SET status='scanned',error=NULL,scanned_at=CURRENT_TIMESTAMP "
                        "WHERE id=?", (video["id"],))
         store.finish_scan(scan_id)
-        if settings["evidence"]["compact"]:
-            store.compact_evidence(scan_id, settings["evidence"]["max_candidates"], aliases)
-        else:
-            store.prune_orphan_evidence()
+        # Every committed batch has already compacted its changed clusters.
+        # A crash between file save and commit is recovered at the next startup.
     except BaseException as exc:
         store.finish_scan(scan_id, str(exc))
         raise

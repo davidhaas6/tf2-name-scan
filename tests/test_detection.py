@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 from tf2scan.config import Config
 from tf2scan.contracts import AdapterMetadata, Detection, Frame
 from tf2scan.crops import canonicalize, geometry_metadata, prepare_crop
-from tf2scan.detected_ingestion import recognize_frame
+from tf2scan.detected_ingestion import _prepare_frames, recognize_frame
 from tf2scan.detection import FakeDetector, detect_frames, detector_input, to_source_detection
 from tf2scan.frames import detector_frame, sample_frames
 from tf2scan.geometry import decode_polygon
@@ -46,6 +46,17 @@ class Recognizer:
             self.count += 1
             results.append(Recognition(f"Player{self.count}", None))
         return results
+
+
+def test_cross_frame_recognition_preserves_order_and_empty_frames():
+    recognizer = Recognizer()
+    frames = [frame(str(i)) for i in range(3)]
+    proposals = [[box("first")], [], [box("second"), box("third", x=120)]]
+    entries = _prepare_frames(frames, proposals, recognizer, merge_settings({}))
+    assert [entry[4] for entry in entries] == [1, 0, 2]
+    assert [result.text for entry in entries for _, result in entry[5]] == [
+        "Player1", "Player2", "Player3"]
+    assert [len(call) for call in recognizer.calls] == [3]
 
 
 def test_rectification_pixels_padding_and_transform():

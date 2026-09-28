@@ -13,6 +13,8 @@ def test_minimal_config_and_identity(tmp_path):
     encoded, digest = config.effective_scan()
     assert "profiles" not in config.data
     assert json.loads(encoded)["settings"]["clustering"]["gap_s"] == 3
+    assert json.loads(encoded)["settings"]["detector"]["enable_mkldnn"] is False
+    assert json.loads(encoded)["settings"]["recognizer"]["enable_mkldnn"] is True
     config.data["query"] = {"target_name": "different"}
     config.data["matching"] = {"strong": 0.99}
     assert config.effective_scan()[1] == digest

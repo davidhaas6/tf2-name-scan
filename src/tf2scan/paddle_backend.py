@@ -122,6 +122,7 @@ def create_models(config):
         raise ValueError("Local detection CLI requires Paddle detector and recognizer")
     if settings["detector"]["device"] != settings["recognizer"]["device"]:
         raise ValueError("Paddle detector and recognizer must use the same device")
+    os.environ["PADDLE_PDX_CPU_NUM_THREADS"] = str(settings["detector"]["cpu_threads"])
     os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(config.resolve("models/paddlex")))
     try:
         from paddleocr import TextDetection, TextRecognition

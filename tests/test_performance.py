@@ -23,7 +23,7 @@ def test_profile_reports_stage_totals_and_realtime_factor():
     assert result["settings"]["sampling"]["fps"] == 1
 
 
-def test_persistence_detail_counts_batch_and_orphan_sweep(tmp_path):
+def test_persistence_detail_counts_batch_without_orphan_sweep(tmp_path):
     config = Config(tmp_path / "config.yaml", {})
     profile = ScanProfile()
     with Store(config.root) as store:
@@ -36,9 +36,9 @@ def test_persistence_detail_counts_batch_and_orphan_sweep(tmp_path):
     counts = result["persistence_counts"]
     assert counts["batch_commits"] == 1
     assert counts["compaction_calls"] == 1
-    assert counts["orphan_sweep_calls"] == 1
+    assert counts.get("orphan_sweep_calls", 0) == 0
     assert counts["images_saved"] == 1
-    assert counts["asset_files_checked"] >= 1
+    assert counts.get("asset_files_checked", 0) == 0
     detail = result["persistence_detail_s"]
     assert detail["transaction_total"] >= detail["image_save"]
     assert detail["compaction_total"] >= detail["reference_lookup"]
@@ -46,4 +46,4 @@ def test_persistence_detail_counts_batch_and_orphan_sweep(tmp_path):
     assert result["stages_s"]["persistence_evidence"] >= detail["transaction_total"]
     assert result["persistence_batches"][0]["frames"] == 1
     assert result["persistence_batches"][0]["accepted_observations"] == 1
-    assert result["persistence_batches"][0]["asset_files_checked"] >= 1
+    assert result["persistence_batches"][0]["asset_files_checked"] == 0
