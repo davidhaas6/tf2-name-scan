@@ -1,45 +1,5 @@
 # TF2 name scan
 
-```bash
-# 1. Build a reusable OCR corpus from a local recording (after setup below).
-uv run tf2scan scan --local game.mp4
-
-# 2. Index online sources from config.yaml, then scan or resume pending videos.
-uv run tf2scan index config.yaml
-uv run tf2scan scan --pending
-
-# 3. Search names and aliases; each query generates a report without rerunning OCR.
-uv run tf2scan query --name HumanWorm --alias OldName --alias AlternateSpelling
-uv run tf2scan query --name AnotherPlayer
-
-# 4. Review a candidate and export all recognized text for further analysis.
-# Replace 42 with a hit ID from output/report/index.html.
-uv run tf2scan review 42 confirmed --note "Name clearly visible"
-uv run tf2scan report --text-clusters
-
-# 5. Reprocess a recording at a chosen sampling rate and capture stage timings.
-uv run tf2scan scan --local game.mp4 --reprocess --fps 2 --perf-output output/scan-profile.json
-
-# 6. Scan one YouTube video (YouTube scanning requires Node.js 22+ on PATH).
-# Set sources: ["https://www.youtube.com/watch?v=YOUTUBE_ID"] in config.yaml.
-# Replace YOUTUBE_ID in the URL and command with the video's ID.
-uv run tf2scan index config.yaml
-uv run tf2scan scan --video YOUTUBE_ID
-uv run tf2scan query --name HumanWorm
-
-# 7. Scan a YouTube playlist, then resume interrupted scans or retry failures.
-# Set sources: ["https://www.youtube.com/playlist?list=PLAYLIST_ID"] in config.yaml.
-# Replace PLAYLIST_ID with the playlist's ID before indexing.
-uv run tf2scan index config.yaml
-uv run tf2scan scan --pending
-# After an interruption or failure, rerun; completed videos are skipped.
-uv run tf2scan scan --pending
-
-# 8. Reprocess one indexed YouTube video at 2 fps and profile its scan.
-uv run tf2scan scan --video YOUTUBE_ID --reprocess --fps 2 --perf-output output/youtube-profile.json
-uv run tf2scan report --text-clusters
-```
-
 A local CLI that builds a reusable TF2 text OCR corpus, then searches
 it for a username and aliases. Changing targets reruns matching only—no downloads,
 frame decoding, or OCR.
@@ -81,3 +41,45 @@ FFmpeg-dependent tests are skipped if FFmpeg is unavailable.
 
 See the [high-level design](docs/high-level-design.md) and
 [evaluation guide](docs/evaluation.md). No public search service is included.
+
+## Usage
+
+```bash
+# Build a reusable OCR corpus from a local recording.
+uv run tf2scan scan --local game.mp4
+
+# Index online sources from config.yaml, then scan or resume pending videos.
+uv run tf2scan index config.yaml
+uv run tf2scan scan --pending
+
+# Search names and aliases; each query generates a report without rerunning OCR.
+uv run tf2scan query --name HumanWorm --alias OldName --alias AlternateSpelling
+uv run tf2scan query --name AnotherPlayer
+
+# Review a candidate and export all recognized text for further analysis.
+# Replace 42 with a hit ID from output/report/index.html.
+uv run tf2scan review 42 confirmed --note "Name clearly visible"
+uv run tf2scan report --text-clusters
+
+# 5. Reprocess a recording at a chosen sampling rate and capture stage timings.
+uv run tf2scan scan --local game.mp4 --reprocess --fps 2 --perf-output output/scan-profile.json
+
+# Scan one YouTube video (YouTube scanning requires Node.js 22+ on PATH).
+# Set sources: ["https://www.youtube.com/watch?v=YOUTUBE_ID"] in config.yaml.
+# Replace YOUTUBE_ID in the URL and command with the video's ID.
+uv run tf2scan index config.yaml
+uv run tf2scan scan --video YOUTUBE_ID
+uv run tf2scan query --name HumanWorm
+
+# Scan a YouTube playlist, then resume interrupted scans or retry failures.
+# Set sources: ["https://www.youtube.com/playlist?list=PLAYLIST_ID"] in config.yaml.
+# Replace PLAYLIST_ID with the playlist's ID before indexing.
+uv run tf2scan index config.yaml
+uv run tf2scan scan --pending
+# After an interruption or failure, rerun; completed videos are skipped.
+uv run tf2scan scan --pending
+
+# 8. Reprocess one indexed YouTube video at 2 fps and profile its scan.
+uv run tf2scan scan --video YOUTUBE_ID --reprocess --fps 2 --perf-output output/youtube-profile.json
+uv run tf2scan report --text-clusters
+```
