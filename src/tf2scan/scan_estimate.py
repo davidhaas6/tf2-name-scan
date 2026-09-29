@@ -24,12 +24,15 @@ class ScanEstimate:
 
     INITIAL_RATE = 0.6
     VIDEO_MEMORY = 0.75
-    ADAPTATION_SECONDS = 30.0
+    ADAPTATION_SECONDS = 120.0
+    QUEUE_PRIOR_SECONDS = 300.0
 
     def __init__(self, queue, resume_positions=None):
         self.queue = [(video["id"], _duration(video["duration_s"])) for video in queue]
         self.resume_positions = resume_positions or {}
         self.rate = self.INITIAL_RATE
+        self.queue_video_seconds = 0.0
+        self.queue_wall_seconds = 0.0
         self.started_videos = 0
         self.index = None
         self.position = 0.0
@@ -40,6 +43,8 @@ class ScanEstimate:
         self.queue[self.index] = (video_id, _duration(duration))
         if self.started_videos:
             self.rate = self.INITIAL_RATE + self.VIDEO_MEMORY * (self.rate - self.INITIAL_RATE)
+            self.queue_video_seconds *= self.VIDEO_MEMORY
+            self.queue_wall_seconds *= self.VIDEO_MEMORY
         self.started_videos += 1
         self.position = max(0.0, position)
         self.observed_at = time.monotonic() if now is None else now
@@ -55,6 +60,8 @@ class ScanEstimate:
             measured = elapsed / advanced
             weight = -math.expm1(-advanced / self.ADAPTATION_SECONDS)
             self.rate += weight * (measured - self.rate)
+            self.queue_video_seconds += advanced
+            self.queue_wall_seconds += elapsed
         self.position = position
         self.observed_at = now
 
@@ -68,6 +75,12 @@ class ScanEstimate:
         ]
         return (
             current * self.rate,
-            (current + sum(value for value in later if value)) * self.rate,
+            current * self.rate + sum(value for value in later if value) * self.queue_rate,
             sum(value is None for value in later),
+        )
+
+    @property
+    def queue_rate(self):
+        return (self.INITIAL_RATE * self.QUEUE_PRIOR_SECONDS + self.queue_wall_seconds) / (
+            self.QUEUE_PRIOR_SECONDS + self.queue_video_seconds
         )

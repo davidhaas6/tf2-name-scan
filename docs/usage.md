@@ -70,9 +70,11 @@ running completed/skipped/failed totals. The detection pipeline also reports
 video time processed, percentage, estimated time remaining for this video and
 the queue, and the estimated processing rate. Estimates start at 0.6 seconds
 per video second and adjust from elapsed wall time after each saved batch.
-Earlier videos influence later estimates, with some decay toward the initial
-rate between videos. Queue estimates use the known durations of later videos;
-the message counts any videos whose duration is unknown. Resumed videos use their
+The current-video rate uses a slower moving average to avoid reacting too much
+to short stretches. Later videos use a steadier average of observed work, with
+older observations discounted between videos. Queue estimates use the known
+durations of later videos; the message counts any videos whose duration is
+unknown. Resumed videos use their
 saved positions, including those later in the queue. Model loading and other
 setup are excluded. Updates are checked after each processed frame batch and
 printed at most once every five seconds, plus at the start and end of a video.
@@ -137,7 +139,7 @@ uv run tf2scan index config.yaml
 uv run tf2scan scan --pending
 ```
 
-YouTube scanning also needs Node.js 22 or newer on `PATH`. Use `uv run tf2scan scan --video YOUTUBE_ID` for one indexed video. Completed videos are skipped on later scans; use `--reprocess` when you intentionally want a new scan with changed scan settings. Interrupted scans can resume, and failed videos can be retried with `--pending`.
+YouTube scanning also needs Node.js 22 or newer on `PATH`. Use `uv run tf2scan scan --video YOUTUBE_ID` for one indexed video. Completed videos are skipped on later scans; use `--reprocess` when you intentionally want a new scan with changed scan settings. Interrupted scans can resume near their last saved frame, with a short overlap, and failed videos can be retried with `--pending`.
 
 All commands accept `--config PATH` if your config file has another name or location. Paths inside the config are relative to that file; `--local` paths are relative to your current directory.
 

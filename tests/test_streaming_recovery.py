@@ -93,6 +93,79 @@ def test_resume_committed_batches_and_overlap(tmp_path, monkeypatch, remote):
         assert not store.rows("PRAGMA foreign_key_check")
 
 
+@pytest.mark.parametrize("remote", [False, True])
+def test_interrupt_resumes_near_committed_frame_in_same_chunk(tmp_path, monkeypatch, remote):
+    config = Config(
+        tmp_path / "config.yaml",
+        {
+            "sampling": {"chunk_seconds": 10},
+            "acquisition": {"attempts": 1, "overlap_s": 2},
+            "persistence": {"max_rows": 1},
+        },
+    )
+    detector = FakeDetector({str(i): [box()] for i in range(10)})
+    recognizer = Recognizer()
+    local = tmp_path / "clip.mp4"
+    local.write_bytes(b"fixture")
+    if remote:
+        monkeypatch.setattr(
+            "tf2scan.detected_ingestion.resolve_stream",
+            lambda _: (
+                "https://cdn.example/video",
+                10,
+                {"width": 320, "height": 180},
+                "cdn.example",
+                {},
+            ),
+        )
+    starts = []
+
+    def samples(path, fps, start, **kwargs):
+        starts.append(start)
+        if len(starts) == 1:
+
+            def interrupted():
+                for second in range(6):
+                    yield frame(str(second))
+                raise KeyboardInterrupt
+
+            return interrupted()
+        return [frame(str(i)) for i in range(int(start), int(kwargs["end"]))]
+
+    monkeypatch.setattr("tf2scan.detected_ingestion.sample_frames", samples)
+    with Store(config.root) as store:
+        store.upsert_video(
+            {
+                "id": "v",
+                "title": "video",
+                "source_url": "https://example/video",
+                "duration_s": 10,
+                "local_path": None if remote else str(local),
+            }
+        )
+        video = store.video("v")
+        with pytest.raises(KeyboardInterrupt):
+            ingest(store, config, video, recognizer, detector=detector)
+        assert (
+            store.rows("SELECT last_processed_timestamp_s FROM scan_chunks")[0][
+                "last_processed_timestamp_s"
+            ]
+            == 5
+        )
+        assert ingest(store, config, video, recognizer, detector=detector)
+        assert starts == [0, 3]
+        assert [
+            row["timestamp_s"]
+            for row in store.rows("SELECT timestamp_s FROM sampled_frames ORDER BY timestamp_s")
+        ] == list(range(10))
+        assert [
+            row["requested_start_s"]
+            for row in store.rows(
+                "SELECT requested_start_s FROM chunk_attempts ORDER BY attempt_no"
+            )
+        ] == [0, 3]
+
+
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg not installed")
 def test_real_local_section_timestamps_and_early_close(tmp_path):
     path = tmp_path / "section.mp4"

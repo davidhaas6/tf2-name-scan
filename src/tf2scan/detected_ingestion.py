@@ -421,7 +421,7 @@ def ingest_detected(
         total_minutes, total_seconds = divmod(int(duration), 60)
         current_remaining, queue_remaining, unknown = estimate.remaining(timestamp)
         log.info(
-            "%s: %s %02d:%02d / %02d:%02d (%.1f%%); estimated remaining %s video, %s queue%s (%.2fx)",
+            "%s: %s %02d:%02d / %02d:%02d (%.1f%%); estimated remaining %s video, %s queue%s (%.2fx current, %.2fx later)",
             video["id"],
             "processing" if processing else "saved",
             elapsed_minutes,
@@ -433,6 +433,7 @@ def ingest_detected(
             format_time(queue_remaining),
             f" + {unknown} unknown-duration video(s)" if unknown else "",
             estimate.rate,
+            estimate.queue_rate,
         )
 
     report_progress(tracker.last_time, force=True)
@@ -466,9 +467,12 @@ def ingest_detected(
             attempts = settings["acquisition"]["attempts"]
             for retry in range(attempts):
                 overlap = settings["acquisition"]["overlap_s"]
+                # Revisit a few saved frames, not the entire unfinished chunk.
+                # The committed watermark also advances on retries in this process.
+                resume_at = max(start, tracker.last_time)
                 source_start = max(
                     0,
-                    math.floor((start - overlap) * settings["sampling"]["fps"])
+                    math.floor((resume_at - overlap) * settings["sampling"]["fps"])
                     / settings["sampling"]["fps"],
                 )
                 attempt = store.record_attempt(
