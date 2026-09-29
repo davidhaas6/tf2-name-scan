@@ -136,7 +136,15 @@ def execute(args):
             completed_count = 0
             skipped = 0
             setup_s = 0.0
-            for video in queue:
+            log.info("Scan queue: %d videos", len(queue))
+            for position, video in enumerate(queue, 1):
+                log.info(
+                    "Video %d/%d: %s (%s)",
+                    position,
+                    len(queue),
+                    video["title"],
+                    video["id"],
+                )
                 unfinished = store.rows(
                     "SELECT id FROM video_scans WHERE video_id=? AND status!='completed' LIMIT 1",
                     (video["id"],),
@@ -146,6 +154,14 @@ def execute(args):
                         "Already scanned: %s (use --reprocess to create a new scan)", video["id"]
                     )
                     skipped += 1
+                    log.info(
+                        "Batch: %d/%d finished; %d completed; %d skipped; %d failures",
+                        position,
+                        len(queue),
+                        completed_count,
+                        skipped,
+                        failures,
+                    )
                     continue
                 try:
                     if args.profile:
@@ -153,6 +169,7 @@ def execute(args):
                         video["hud_profile"] = args.profile
                     # Check model setup before initiating downloads.
                     if recognizer is None:
+                        log.info("Loading models...")
                         setup_started = time.perf_counter()
                         if config.data["pipeline"] == "legacy_hud":
                             recognizer = OpenOCRRecognizer(config)
@@ -179,6 +196,7 @@ def execute(args):
                     )
                     completed_count += int(bool(completed))
                     skipped += int(not completed)
+                    log.info("Video %s: %s", video["id"], "completed" if completed else "skipped")
                     if profile and completed:
                         result = profile.result(
                             video, merge_settings(config.data), model_setup_s=setup_s
@@ -194,6 +212,14 @@ def execute(args):
                     status = "scanned" if video["status"] == "scanned" else "failed"
                     store.update_video(video["id"], status=status, error=str(exc))
                     log.exception("Video %s failed", video["id"])
+                log.info(
+                    "Batch: %d/%d finished; %d completed; %d skipped; %d failures",
+                    position,
+                    len(queue),
+                    completed_count,
+                    skipped,
+                    failures,
+                )
             if not config.data.get("retain_downloads", True):
                 cleanup_downloads(store)
             selected_scans = store.selected_scan_ids()

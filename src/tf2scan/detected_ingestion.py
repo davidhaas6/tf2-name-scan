@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import math
 import time
 import uuid
@@ -18,6 +19,8 @@ from .lineage import insert
 from .matching import NORMALIZATION_VERSION, compact, normalize
 from .retention import select_crops, useful_text
 from .settings import merge_settings
+
+log = logging.getLogger(__name__)
 
 
 def recognize_crops(prepared, recognizer, settings, profile=None):
@@ -399,6 +402,36 @@ def ingest_detected(
     else:
         store.recover_orphan_evidence()
     tracker = TextTracker.restore(settings["clustering"], store, scan_id)
+    last_progress = time.monotonic()
+
+    def report_progress(timestamp, *, force=False):
+        nonlocal last_progress
+        now = time.monotonic()
+        if not force and now - last_progress < 5:
+            return
+        last_progress = now
+        timestamp = min(duration, max(0, timestamp))
+        elapsed_minutes, elapsed_seconds = divmod(int(timestamp), 60)
+        total_minutes, total_seconds = divmod(int(duration), 60)
+        # Fixed wall-time estimate based on video time still to scan.
+        remaining_minutes, remaining_seconds = divmod(math.ceil((duration - timestamp) * 0.65), 60)
+        estimated_minutes, estimated_seconds = divmod(math.ceil(duration * 0.65), 60)
+        log.info(
+            "%s: %02d:%02d / %02d:%02d (%.1f%%); "
+            "estimated remaining %02d:%02d (full video %02d:%02d at 0.65x)",
+            video["id"],
+            elapsed_minutes,
+            elapsed_seconds,
+            total_minutes,
+            total_seconds,
+            100 * timestamp / duration,
+            remaining_minutes,
+            remaining_seconds,
+            estimated_minutes,
+            estimated_seconds,
+        )
+
+    report_progress(tracker.last_time, force=True)
     source_used = False
     try:
         for sequence, start, end in _chunks(duration, settings["sampling"]["chunk_seconds"]):
@@ -570,6 +603,7 @@ def ingest_detected(
                                             settings,
                                         )
                                     pending, pending_bytes, first_time = [], 0, None
+                                    report_progress(tracker.last_time)
                     if pending:
                         if profile:
                             with profile.measure("persistence_evidence"):
@@ -613,6 +647,7 @@ def ingest_detected(
                             "elapsed_s=? WHERE id=?",
                             (time.monotonic() - attempt_started, attempt),
                         )
+                    report_progress(end)
                     break
                 except Exception as exc:
                     with store.transaction() as db:
@@ -650,6 +685,7 @@ def ingest_detected(
                 (video["id"],),
             )
         store.finish_scan(scan_id)
+        report_progress(duration, force=True)
         # Every committed batch has already compacted its changed clusters.
         # A crash between file save and commit is recovered at the next startup.
     except BaseException as exc:

@@ -25,7 +25,10 @@ def metadata(engine, name, options):
         actual_name = yaml.safe_load(stream)["Global"]["model_name"]
     if actual_name != name:
         raise ValueError(f"Requested model {name}, but loaded artifacts identify {actual_name}")
-    dependencies = {p: version(p) for p in ("paddleocr", "paddlex", "paddlepaddle", "numpy")}
+    dependencies = {
+        p: version(p)
+        for p in ("paddleocr", "paddlex", "paddlepaddle-gpu", "numpy")
+    }
     return AdapterMetadata(
         name,
         dependencies["paddleocr"],

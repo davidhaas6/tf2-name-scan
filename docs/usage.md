@@ -65,6 +65,20 @@ uv run tf2scan scan --local "C:\videos\game.mp4"
 
 The scan saves recognized text and prints completed, skipped and failed video counts plus the saved corpus totals. It does not run a search or generate exports. Existing reports remain unchanged until `query` or `report` runs. `--name` and `--alias` are query options only.
 
+Scan progress messages appear automatically: scans show the current video,
+queue size, model loading, and running
+completed/skipped/failed totals. The detection pipeline also reports video time
+processed and percentage about every five seconds after a saved batch or completed
+chunk, plus initial and final progress. Slow batches can make updates less frequent.
+The percentage measures video time processed. Each update also estimates remaining
+scan time as remaining video seconds multiplied by 0.65, and shows the full-video
+estimate (video duration multiplied by 0.65). For example, a 20-minute video has a
+13-minute estimate; halfway through, the estimate is 6 minutes 30 seconds remaining.
+Resumed scans use their saved position. These are fixed estimates, excluding model
+loading and other setup, and do not adjust to measured processing speed. Times are
+shown as minutes:seconds.
+Messages use the normal console logger and can be captured in redirected logs.
+
 Evidence retention is independent of configured names and aliases: each cluster keeps its highest-confidence representative crop. With `evidence.compact: true`, superseded representatives are removed; disabling compaction keeps earlier representative crops too. The former `evidence.max_candidates` option is ignored and can be removed from existing configs. All accepted OCR observations remain searchable, even when their crops are not retained. Previously retained crops remain available in existing completed scans.
 
 Search the corpus and generate a report:
