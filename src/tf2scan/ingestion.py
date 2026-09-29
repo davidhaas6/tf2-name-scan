@@ -28,6 +28,7 @@ def ingest(
     *,
     detector=None,
     profile=None,
+    estimate=None,
 ):
     if config.data.get("pipeline", "detection") != "legacy_hud":
         if detector is None:
@@ -46,6 +47,7 @@ def ingest(
             reprocess=reprocess,
             frame_source=frame_source,
             profile=profile,
+            estimate=estimate,
         )
     if (
         store.rows("SELECT id FROM selected_video_scans WHERE video_id=?", (video["id"],))

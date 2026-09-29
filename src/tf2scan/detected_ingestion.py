@@ -18,6 +18,7 @@ from .geometry import encode_polygon, geometry_key
 from .lineage import insert
 from .matching import NORMALIZATION_VERSION, compact, normalize
 from .retention import select_crops, useful_text
+from .scan_estimate import ScanEstimate, format_time
 from .settings import merge_settings
 
 log = logging.getLogger(__name__)
@@ -338,6 +339,7 @@ def ingest_detected(
     reprocess=False,
     frame_source=None,
     profile=None,
+    estimate=None,
 ):
     overrides = {"sampling": {"fps": fps}} if fps is not None else None
     settings = merge_settings(config.data, overrides)
@@ -402,10 +404,14 @@ def ingest_detected(
     else:
         store.recover_orphan_evidence()
     tracker = TextTracker.restore(settings["clustering"], store, scan_id)
+    estimate = estimate or ScanEstimate([video])
+    estimate.begin(video["id"], duration, tracker.last_time)
     last_progress = time.monotonic()
 
-    def report_progress(timestamp, *, force=False):
+    def report_progress(timestamp, *, force=False, observed=False, processing=False):
         nonlocal last_progress
+        if observed:
+            estimate.observe(timestamp)
         now = time.monotonic()
         if not force and now - last_progress < 5:
             return
@@ -413,22 +419,20 @@ def ingest_detected(
         timestamp = min(duration, max(0, timestamp))
         elapsed_minutes, elapsed_seconds = divmod(int(timestamp), 60)
         total_minutes, total_seconds = divmod(int(duration), 60)
-        # Fixed wall-time estimate based on video time still to scan.
-        remaining_minutes, remaining_seconds = divmod(math.ceil((duration - timestamp) * 0.65), 60)
-        estimated_minutes, estimated_seconds = divmod(math.ceil(duration * 0.65), 60)
+        current_remaining, queue_remaining, unknown = estimate.remaining(timestamp)
         log.info(
-            "%s: %02d:%02d / %02d:%02d (%.1f%%); "
-            "estimated remaining %02d:%02d (full video %02d:%02d at 0.65x)",
+            "%s: %s %02d:%02d / %02d:%02d (%.1f%%); estimated remaining %s video, %s queue%s (%.2fx)",
             video["id"],
+            "processing" if processing else "saved",
             elapsed_minutes,
             elapsed_seconds,
             total_minutes,
             total_seconds,
             100 * timestamp / duration,
-            remaining_minutes,
-            remaining_seconds,
-            estimated_minutes,
-            estimated_seconds,
+            format_time(current_remaining),
+            format_time(queue_remaining),
+            f" + {unknown} unknown-duration video(s)" if unknown else "",
+            estimate.rate,
         )
 
     report_progress(tracker.last_time, force=True)
@@ -603,7 +607,9 @@ def ingest_detected(
                                             settings,
                                         )
                                     pending, pending_bytes, first_time = [], 0, None
-                                    report_progress(tracker.last_time)
+                                    report_progress(tracker.last_time, observed=True)
+                            if eligible:
+                                report_progress(eligible[-1].timestamp_s, processing=True)
                     if pending:
                         if profile:
                             with profile.measure("persistence_evidence"):
@@ -631,6 +637,7 @@ def ingest_detected(
                                 recognizer,
                                 settings,
                             )
+                        report_progress(tracker.last_time, observed=True)
                     if not seen and not store.rows(
                         "SELECT id FROM sampled_frames WHERE scan_chunk_id=? LIMIT 1",
                         (chunk["id"],),

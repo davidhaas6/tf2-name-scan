@@ -42,7 +42,7 @@ def test_search_options_belong_to_query(option):
 
 
 @pytest.mark.parametrize("configured", [False, True])
-def test_scan_then_query_without_ocr(tmp_path, monkeypatch, capsys, configured):
+def test_scan_then_query_without_ocr(tmp_path, monkeypatch, capsys, caplog, configured):
     from test_detection import Recognizer, box, frame
 
     from tf2scan.cli import execute
@@ -68,7 +68,9 @@ def test_scan_then_query_without_ocr(tmp_path, monkeypatch, capsys, configured):
     monkeypatch.setattr(recognizer, "close", lambda: None, raising=False)
     monkeypatch.setattr("tf2scan.paddle_backend.create_models", lambda _: (detector, recognizer))
     monkeypatch.setattr("tf2scan.detected_ingestion.sample_frames", lambda *a, **k: [frame()])
+    caplog.set_level("INFO")
     assert execute(parser().parse_args(["scan", "--config", str(path), "--video", "v"])) == 0
+    assert "estimated remaining" in caplog.text
     output = capsys.readouterr().out
     assert "1 completed; 0 skipped; 0 failures" in output
     assert "Search target" not in output

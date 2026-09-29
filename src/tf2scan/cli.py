@@ -15,6 +15,7 @@ from .performance import ScanProfile, write_profile
 from .query import run_query
 from .recognize import OpenOCRRecognizer
 from .report import export_report
+from .scan_estimate import ScanEstimate
 from .settings import merge_settings
 from .storage import Store
 from .ytdlp_options import with_node
@@ -136,6 +137,25 @@ def execute(args):
             completed_count = 0
             skipped = 0
             setup_s = 0.0
+            estimate = None
+            if config.data["pipeline"] == "detection":
+                resumed = {}
+                if not args.reprocess:
+                    resumed = {
+                        row["video_id"]: row["processed_s"]
+                        for row in store.rows(
+                            """SELECT s.video_id,
+                            MAX(CASE WHEN c.status='completed' THEN c.chunk_end_s
+                                ELSE c.last_processed_timestamp_s END) AS processed_s
+                            FROM video_scans s JOIN scan_chunks c ON c.video_scan_id=s.id
+                            WHERE s.status!='completed' AND s.id=(
+                                SELECT MAX(id) FROM video_scans
+                                WHERE video_id=s.video_id AND status!='completed')
+                            GROUP BY s.video_id"""
+                        )
+                        if row["processed_s"] is not None
+                    }
+                estimate = ScanEstimate(queue, resumed)
             log.info("Scan queue: %d videos", len(queue))
             for position, video in enumerate(queue, 1):
                 log.info(
@@ -193,6 +213,7 @@ def execute(args):
                         args.reprocess,
                         detector=detector,
                         profile=profile,
+                        estimate=estimate,
                     )
                     completed_count += int(bool(completed))
                     skipped += int(not completed)

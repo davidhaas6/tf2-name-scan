@@ -65,18 +65,19 @@ uv run tf2scan scan --local "C:\videos\game.mp4"
 
 The scan saves recognized text and prints completed, skipped and failed video counts plus the saved corpus totals. It does not run a search or generate exports. Existing reports remain unchanged until `query` or `report` runs. `--name` and `--alias` are query options only.
 
-Scan progress messages appear automatically: scans show the current video,
-queue size, model loading, and running
-completed/skipped/failed totals. The detection pipeline also reports video time
-processed and percentage about every five seconds after a saved batch or completed
-chunk, plus initial and final progress. Slow batches can make updates less frequent.
-The percentage measures video time processed. Each update also estimates remaining
-scan time as remaining video seconds multiplied by 0.65, and shows the full-video
-estimate (video duration multiplied by 0.65). For example, a 20-minute video has a
-13-minute estimate; halfway through, the estimate is 6 minutes 30 seconds remaining.
-Resumed scans use their saved position. These are fixed estimates, excluding model
-loading and other setup, and do not adjust to measured processing speed. Times are
-shown as minutes:seconds.
+Scan progress messages show the current video, queue size, model loading, and
+running completed/skipped/failed totals. The detection pipeline also reports
+video time processed, percentage, estimated time remaining for this video and
+the queue, and the estimated processing rate. Estimates start at 0.6 seconds
+per video second and adjust from elapsed wall time after each saved batch.
+Earlier videos influence later estimates, with some decay toward the initial
+rate between videos. Queue estimates use the known durations of later videos;
+the message counts any videos whose duration is unknown. Resumed videos use their
+saved positions, including those later in the queue. Model loading and other
+setup are excluded. Updates are checked after each processed frame batch and
+printed at most once every five seconds, plus at the start and end of a video.
+The message says `processing` while frames are still waiting to be saved and
+`saved` after a commit. A slow frame batch or stalled source can delay an update.
 Messages use the normal console logger and can be captured in redirected logs.
 
 Evidence retention is independent of configured names and aliases: each cluster keeps its highest-confidence representative crop. With `evidence.compact: true`, superseded representatives are removed; disabling compaction keeps earlier representative crops too. The former `evidence.max_candidates` option is ignored and can be removed from existing configs. All accepted OCR observations remain searchable, even when their crops are not retained. Previously retained crops remain available in existing completed scans.
