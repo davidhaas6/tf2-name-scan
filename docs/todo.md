@@ -2,7 +2,7 @@
 
 This is a lightweight task tracker for the next practical checks, not a complete implementation plan.
 
-- [ ] stop searching for a name after scans. scanning and querying should be separate steps.
+- [x] **Separate scanning from searching.** `scan` reports ingestion totals without querying or exporting; `query` reuses saved OCR. Evidence retention is independent of configured names and aliases.
 - [ ] understand how to enable mkldnn or otherwise speed up the detection step.
 
 - [ ] **Validate Python 3.11 or 3.12 for the pinned Paddle stack.** Run setup, indexing, and a short scan on Windows with a fresh environment; confirm OCR output and warnings, then update `requires-python`, the lockfile, and setup instructions to the verified minimum.

@@ -218,12 +218,16 @@ def test_sparse_evidence_reports_actual_observation_and_missing_crop(tmp_path):
         assert exported["scan_run_id"]
 
 
-def test_configured_query_candidate_crops_are_bounded(tmp_path):
+@pytest.mark.parametrize(
+    "query", [{}, {"target_name": "Player0ne"}, {"target_name": "Other", "aliases": ["Player0ne"]}]
+)
+@pytest.mark.parametrize("compact", [True, False])
+def test_evidence_is_independent_of_query(tmp_path, query, compact):
     config = Config(
         tmp_path / "config.yaml",
         {
-            "query": {"target_name": "Player0ne"},
-            "evidence": {"max_candidates": 1},
+            "query": query,
+            "evidence": {"compact": compact},
         },
     )
     detector = FakeDetector({str(i): [box()] for i in range(3)})
@@ -248,11 +252,12 @@ def test_configured_query_candidate_crops_are_bounded(tmp_path):
         )
         observations = store.rows("SELECT id,crop_path FROM observations ORDER BY id")
         assert len(observations) == 3
-        assert sum(bool(o["crop_path"]) for o in observations) == 2
+        assert sum(bool(o["crop_path"]) for o in observations) == 1
         assert observations[0]["crop_path"]
         query_id = run_query(store, "Player0ne")
         hit = export_report(store, query_id)[0]
-        assert hit["observation_evidence_available"]
+        assert not hit["observation_evidence_available"]
+        assert hit["evidence_kind"] == "representative"
 
 
 def test_paddle_order_mapping_color_and_cardinality(monkeypatch):

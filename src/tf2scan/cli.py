@@ -54,10 +54,6 @@ def parser():
                 type=Path,
                 help="Write per-stage timing JSON for one detected video",
             )
-            sub.add_argument(
-                "--name", help="Name to search after scanning; overrides query.target_name"
-            )
-            sub.add_argument("--alias", action="append", default=[])
         elif name == "query":
             sub.add_argument("--name")
             sub.add_argument("--alias", action="append", default=[])
@@ -109,15 +105,6 @@ def execute(args):
             perf_output = getattr(args, "perf_output", None)
             if perf_output and config.data["pipeline"] != "detection":
                 raise ValueError("--perf-output requires the detection pipeline")
-            name = getattr(args, "name", None)
-            aliases = getattr(args, "alias", [])
-            if name or aliases:
-                query = config.data.setdefault("query", {})
-                if name:
-                    query["target_name"] = name
-                    query["aliases"] = aliases
-                else:
-                    query["aliases"] = [*query.get("aliases", []), *aliases]
             sampling_overrides = {
                 k: v
                 for k, v in (
@@ -146,6 +133,8 @@ def execute(args):
             recognizer = None
             detector = None
             failures = 0
+            completed_count = 0
+            skipped = 0
             setup_s = 0.0
             for video in queue:
                 unfinished = store.rows(
@@ -156,6 +145,7 @@ def execute(args):
                     log.info(
                         "Already scanned: %s (use --reprocess to create a new scan)", video["id"]
                     )
+                    skipped += 1
                     continue
                 try:
                     if args.profile:
@@ -187,6 +177,8 @@ def execute(args):
                         detector=detector,
                         profile=profile,
                     )
+                    completed_count += int(bool(completed))
+                    skipped += int(not completed)
                     if profile and completed:
                         result = profile.result(
                             video, merge_settings(config.data), model_setup_s=setup_s
@@ -202,32 +194,20 @@ def execute(args):
                     status = "scanned" if video["status"] == "scanned" else "failed"
                     store.update_video(video["id"], status=status, error=str(exc))
                     log.exception("Video %s failed", video["id"])
-            query_id = configured_query(store, config)
-            hits = export_report(store, query_id, config.data.get("export_rows", False))
             if not config.data.get("retain_downloads", True):
                 cleanup_downloads(store)
-            for hit in hits:
-                print(
-                    f"{hit['video_id']} {hit['start_s']:.1f}s {hit['best_score']:.3f} {hit['best_text']}"
-                )
-            target = config.data.get("query", {}).get("target_name")
             selected_scans = store.selected_scan_ids()
             cluster_count = len(store.selected_clusters())
             print(
                 f"Saved corpus: {cluster_count} text clusters across "
                 f"{len(selected_scans)} completed video scans."
             )
-            if target:
-                print(
-                    f"Search target: {target!r}; {len(hits)} candidates. "
-                    "Try 'tf2scan query --name NAME' to search another name without rescanning."
-                )
-            else:
-                print(
-                    "No search target configured. Use 'tf2scan query --name NAME' "
-                    "to search the saved OCR text."
-                )
-            print(f"{failures} failures; {config.root / 'report/index.html'}")
+            print(
+                f"Ingestion: {completed_count} completed; {skipped} skipped; {failures} failures."
+            )
+            print(
+                "Use 'tf2scan query --name NAME' to search the saved OCR text without rescanning."
+            )
             return int(bool(failures))
         if args.command == "query":
             query_id = configured_query(store, config, args.name, args.alias)

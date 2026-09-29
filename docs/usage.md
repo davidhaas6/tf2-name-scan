@@ -11,7 +11,7 @@ uv sync --extra paddle
 Copy-Item config.example.yaml config.yaml
 ```
 
-The first scan downloads the OCR models. The example config puts results in `output/` and has an example search name; replace it in `config.yaml` or supply `--name` when scanning.
+The first scan downloads the OCR models. The example config puts the corpus in `output/`. Scanning needs no target; optional `query.target_name` and `query.aliases` defaults apply only to `query`.
 
 The supplied configuration uses `sampling.region: top_right`: only the top-right
 quarter of each sampled frame is sent to the detector. The scanner keeps source
@@ -60,12 +60,20 @@ appears as `startup_cleanup` in new profiles.
 you can see whether routine cleanup cost grows as the corpus grows.
 
 ```powershell
-uv run tf2scan scan --local "C:\videos\game.mp4" --name AnotherPlayer
+uv run tf2scan scan --local "C:\videos\game.mp4"
 ```
 
-The scan saves recognized text and searches for `AnotherPlayer`. It prints candidate matches and a summary of saved clusters. A candidate is a text cluster worth checking, not a confirmed kill or a unique event. `0 failures` means processing completed; zero candidates means this name had no promoted matches, even if other text was found.
+The scan saves recognized text and prints completed, skipped and failed video counts plus the saved corpus totals. It does not run a search or generate exports. Existing reports remain unchanged until `query` or `report` runs. `--name` and `--alias` are query options only.
 
-To scan without searching for a name, remove the `query` section from `config.yaml` and omit `--name`.
+Evidence retention is independent of configured names and aliases: each cluster keeps its highest-confidence representative crop. With `evidence.compact: true`, superseded representatives are removed; disabling compaction keeps earlier representative crops too. The former `evidence.max_candidates` option is ignored and can be removed from existing configs. All accepted OCR observations remain searchable, even when their crops are not retained. Previously retained crops remain available in existing completed scans.
+
+Search the corpus and generate a report:
+
+```powershell
+uv run tf2scan query --name AnotherPlayer
+```
+
+A candidate is a text cluster worth checking, not a confirmed kill or a unique event. Zero candidates means this name had no promoted matches, even if other text was found.
 
 ## See and review search results
 

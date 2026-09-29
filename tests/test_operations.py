@@ -32,9 +32,66 @@ def test_config_validation(tmp_path):
     assert load_config(config).root == tmp_path / "elsewhere"
 
 
-def test_scan_accepts_explicit_query_target():
-    args = parser().parse_args(["scan", "--local", "game.mp4", "--name", "eggo"])
+@pytest.mark.parametrize("option", ["--name", "--alias"])
+def test_search_options_belong_to_query(option):
+    with pytest.raises(SystemExit):
+        parser().parse_args(["scan", option, "eggo"])
+    args = parser().parse_args(["query", "--name", "eggo", "--alias", "waffle"])
     assert args.name == "eggo"
+    assert args.alias == ["waffle"]
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_scan_then_query_without_ocr(tmp_path, monkeypatch, capsys, configured):
+    from test_detection import Recognizer, box, frame
+
+    from tf2scan.cli import execute
+    from tf2scan.detection import FakeDetector
+
+    path = tmp_path / "config.yaml"
+    path.write_text("query: {target_name: Player1}\n" if configured else "{}")
+    config = load_config(path)
+    (tmp_path / "video.mp4").write_bytes(b"fixture")
+    with Store(config.root) as store:
+        store.upsert_video(
+            {
+                "id": "v",
+                "title": "video",
+                "source_url": "url",
+                "local_path": str(tmp_path / "video.mp4"),
+                "duration_s": 1,
+            }
+        )
+    detector = FakeDetector({"0": [box()]})
+    recognizer = Recognizer()
+    monkeypatch.setattr(detector, "close", lambda: None, raising=False)
+    monkeypatch.setattr(recognizer, "close", lambda: None, raising=False)
+    monkeypatch.setattr("tf2scan.paddle_backend.create_models", lambda _: (detector, recognizer))
+    monkeypatch.setattr("tf2scan.detected_ingestion.sample_frames", lambda *a, **k: [frame()])
+    assert execute(parser().parse_args(["scan", "--config", str(path), "--video", "v"])) == 0
+    output = capsys.readouterr().out
+    assert "1 completed; 0 skipped; 0 failures" in output
+    assert "Search target" not in output
+    assert not (config.root / "report/index.html").exists()
+    assert not (config.root / "hits.jsonl").exists()
+    with Store(config.root) as store:
+        assert not store.rows("SELECT * FROM queries")
+        assert not store.rows("SELECT * FROM hits")
+        observations = store.rows("SELECT * FROM observations")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Query must not load models or decode video")
+
+    monkeypatch.setattr("tf2scan.paddle_backend.create_models", forbidden)
+    monkeypatch.setattr("tf2scan.cli.OpenOCRRecognizer", forbidden)
+    monkeypatch.setattr("tf2scan.detected_ingestion.sample_frames", forbidden)
+    for target in ("Player1", "AnotherPlayer"):
+        assert execute(parser().parse_args(["query", "--config", str(path), "--name", target])) == 0
+    with Store(config.root) as store:
+        assert len(store.rows("SELECT * FROM queries")) == 2
+        assert store.rows("SELECT * FROM hits")
+        assert store.rows("SELECT * FROM observations") == observations
+    assert recognizer.count == 1
 
 
 def test_idempotent_index_and_migrations(tmp_path):

@@ -15,7 +15,7 @@ from .download import resolve_stream
 from .frames import detector_frame, frame_iterator, probe, sample_frames
 from .geometry import encode_polygon, geometry_key
 from .lineage import insert
-from .matching import NORMALIZATION_VERSION, alias_score, compact, normalize
+from .matching import NORMALIZATION_VERSION, compact, normalize
 from .retention import select_crops, useful_text
 from .settings import merge_settings
 
@@ -119,7 +119,6 @@ def _commit_batch(
     entries,
     recognizer,
     settings,
-    aliases=(),
     profile=None,
 ):
     """Inference finishes before entering a write transaction; watermark commits last."""
@@ -214,8 +213,7 @@ def _commit_batch(
                 else:
                     representative = True
                 crop_path = None
-                candidate = any(alias_score(result.text, alias) >= 0.65 for alias in aliases)
-                if representative or candidate:
+                if representative:
                     crop_path = (folder / f"{observation}-row.png").as_posix()
                     _save_profiled_image(crop.image, store.root / crop_path, profile)
                     db.execute(
@@ -290,16 +288,12 @@ def _commit_batch(
             with profile.measure("evidence_compaction"):
                 store.compact_evidence(
                     scan_id,
-                    settings["evidence"]["max_candidates"],
-                    aliases,
                     profile=profile,
                     cluster_ids=changed_clusters,
                 )
         else:
             store.compact_evidence(
                 scan_id,
-                settings["evidence"]["max_candidates"],
-                aliases,
                 cluster_ids=changed_clusters,
             )
     if profile:
@@ -399,8 +393,6 @@ def ingest_detected(
     folder = Path("report/assets") / (
         hashlib.sha256(video["id"].encode()).hexdigest()[:16] + "-" + uuid.uuid4().hex
     )
-    query = config.data.get("query", {})
-    aliases = [query["target_name"], *query.get("aliases", [])] if query.get("target_name") else []
     if profile:
         with profile.measure("startup_cleanup"):
             store.recover_orphan_evidence()
@@ -563,7 +555,6 @@ def ingest_detected(
                                                 pending,
                                                 recognizer,
                                                 settings,
-                                                aliases,
                                                 profile,
                                             )
                                     else:
@@ -577,7 +568,6 @@ def ingest_detected(
                                             pending,
                                             recognizer,
                                             settings,
-                                            aliases,
                                         )
                                     pending, pending_bytes, first_time = [], 0, None
                     if pending:
@@ -593,7 +583,6 @@ def ingest_detected(
                                     pending,
                                     recognizer,
                                     settings,
-                                    aliases,
                                     profile,
                                 )
                         else:
@@ -607,7 +596,6 @@ def ingest_detected(
                                 pending,
                                 recognizer,
                                 settings,
-                                aliases,
                             )
                     if not seen and not store.rows(
                         "SELECT id FROM sampled_frames WHERE scan_chunk_id=? LIMIT 1",

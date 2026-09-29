@@ -214,11 +214,8 @@ class Store(LineageStore):
                         path.unlink(missing_ok=True)
         self.prune_orphan_evidence()
 
-    def compact_evidence(
-        self, scan_id, max_candidates=4, aliases=(), profile=None, cluster_ids=None
-    ):
-        """Keep actual representative and bounded query-relevant observation crops."""
-        from .matching import alias_score
+    def compact_evidence(self, scan_id, profile=None, cluster_ids=None):
+        """Keep cluster representative crops independently of search targets."""
 
         if cluster_ids is not None and not cluster_ids:
             return
@@ -233,24 +230,6 @@ class Store(LineageStore):
         keep = set()
         for cluster in clusters:
             keep.add(cluster["representative_observation_id"])
-            if aliases:
-                observations = self.rows(
-                    "SELECT o.id,o.raw_text,o.crop_path FROM observations o "
-                    "JOIN cluster_observations co ON co.observation_id=o.id "
-                    "WHERE co.cluster_id=?",
-                    (cluster["id"],),
-                )
-                ranked = sorted(
-                    (
-                        (max(alias_score(o["raw_text"], a) for a in aliases), o["id"])
-                        for o in observations
-                        if o["crop_path"] and o["id"] != cluster["representative_observation_id"]
-                    ),
-                    key=lambda item: (-item[0], item[1]),
-                )
-                keep.update(
-                    identity for score, identity in ranked[:max_candidates] if score >= 0.65
-                )
         if cluster_ids is None:
             discard = self.rows(
                 "SELECT id,crop_path FROM observations WHERE video_scan_id=? AND crop_path IS NOT NULL",

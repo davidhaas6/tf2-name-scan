@@ -2,8 +2,8 @@
 output_dir: output
 sources: []
 pipeline: detection
-# Example search name: replace it, use `scan --name NAME`, or search later with `query --name NAME`.
-query: { target_name: eggo, aliases: [] }
+# Optional defaults for `query`; scanning needs no target.
+# query: { target_name: eggo, aliases: [] }
 sampling: { fps: 1, chunk_seconds: 600, max_height: 720, region: top_right }
 detector:
   {
@@ -62,6 +62,5 @@ evidence:
   {
     policy: representative,
     full_frames: false,
-    max_candidates: 4,
     compact: true,
   }

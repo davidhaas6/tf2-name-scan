@@ -65,7 +65,7 @@ DEFAULTS = {
     "evidence": {
         "policy": "representative",
         "full_frames": False,
-        "max_candidates": 4,
+        "max_candidates": 4,  # Deprecated compatibility setting; retention ignores targets.
         "compact": True,
     },
 }
