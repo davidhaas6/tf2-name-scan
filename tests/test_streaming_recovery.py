@@ -222,6 +222,88 @@ def test_decoder_failure_closes_process(monkeypatch, payload, message):
         assert process.terminated
 
 
+@pytest.mark.parametrize("count", [0, 2, 4, 5])
+def test_clean_decoder_exit_checks_requested_coverage(monkeypatch, count):
+    class Process:
+        def __init__(self):
+            self.stdout = BytesIO(bytes(12 * count))
+
+        def wait(self, timeout=None):
+            return 0
+
+    process = Process()
+    monkeypatch.setattr("tf2scan.frames.subprocess.Popen", lambda *a, **k: process)
+    source = sample_frames(
+        "https://cdn.example/video", start=10, end=15, dimensions={"width": 2, "height": 2}
+    )
+    if count < 4:
+        with pytest.raises(RuntimeError, match=f"ended early: decoded {count}"):
+            list(source)
+    else:
+        assert len(list(source)) == count
+    assert process.stdout.closed
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg not installed")
+def test_short_local_source_fails_scan_and_resumes(tmp_path):
+    path = tmp_path / "short.mp4"
+
+    def create_clip(duration):
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=96x64:r=10",
+                "-t",
+                str(duration),
+                "-pix_fmt",
+                "yuv420p",
+                str(path),
+            ],
+            check=True,
+        )
+
+    create_clip(2)
+    config = Config(
+        tmp_path / "config.yaml",
+        {
+            "sampling": {"chunk_seconds": 5},
+            "acquisition": {"attempts": 1, "overlap_s": 1},
+            "persistence": {"max_rows": 1},
+        },
+    )
+    with Store(config.root) as store:
+        store.upsert_video(
+            {
+                "id": "v",
+                "title": "video",
+                "source_url": path.as_uri(),
+                "local_path": str(path),
+                "duration_s": 5,
+            }
+        )
+        detector, recognizer = FakeDetector({}), Recognizer()
+        video = store.video("v")
+        with pytest.raises(RuntimeError, match="ended early"):
+            ingest(store, config, video, recognizer, detector=detector)
+        assert not store.selected_scan_ids()
+        assert store.rows("SELECT status FROM scan_chunks")[0]["status"] == "failed"
+        assert store.rows("SELECT count(*) n FROM sampled_frames")[0]["n"] == 2
+        create_clip(5)
+        assert ingest(store, config, video, recognizer, detector=detector)
+        assert len(store.selected_scan_ids()) == 1
+        assert [
+            r["timestamp_s"]
+            for r in store.rows("SELECT timestamp_s FROM sampled_frames ORDER BY timestamp_s")
+        ] == list(range(5))
+        assert not store.rows("PRAGMA foreign_key_check")
+
+
 def test_failed_reprocess_keeps_completed_evidence(tmp_path, monkeypatch):
     config = _config(tmp_path)
     detector = FakeDetector({"0": [box()]})

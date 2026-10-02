@@ -1,5 +1,11 @@
 # Scan profiling findings (2026-09-27–28)
 
+**Newer evidence:** The [2026-10-01 ingestion readiness audit](ingestion-readiness.md)
+records nine completed GPU videos over ten minutes, full sample grids across
+chunk boundaries, real interruption/resume, and investigation of scan 15's
+missing tail. Use that audit for current ingestion readiness; the CPU timings
+below describe the earlier configuration.
+
 The initial measurements below summarize three local runs of the same 11.485833-second video (`input/uw1.mp4`, video ID `local-31b63f8a4f55987ce1f4`). The source is 3440×1440; sampling was 1 frame/second, with 11 frames processed. The scanner ran on Windows build 26200 with an AMD64 Family 25 Model 33 CPU (12 logical CPUs). Detection and recognition used the Paddle PP-OCRv6 small CPU models. Model setup time is reported separately from scan wall time. The full JSON reports are ignored local artifacts at `output/scan-profile.json`, `output/top-right-profile.json`, and `output/top-right-detailed-profile.json`.
 
 ## End-to-end comparison

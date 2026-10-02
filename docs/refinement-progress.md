@@ -1,5 +1,20 @@
 # Refinement implementation
 
+## 2026-10-01 operational audit
+
+The current local configuration uses GPU detection and recognition. Nine online
+videos over ten minutes have completed with complete 1-fps sample grids across
+600-second chunk boundaries. The database also records a successful real resume
+from 430 seconds and queue continuation after another video's HTTP 403.
+See [ingestion readiness](ingestion-readiness.md) for counts, elapsed times,
+evidence inventory, and the historical short scan investigation.
+
+Bounded FFmpeg sampling now rejects a successful process exit when output is
+more than one sample short of the requested section. The existing retry/resume
+path handles this error while preserving committed batches. Current validation:
+103 tests pass; Ruff passes. Name accuracy evaluation remains pending labels.
+The CPU setup and earlier validation totals below are historical milestones.
+
 ## Current milestone: search, evidence and reports complete
 
 R01–R11 core are implemented. R04/R05/R08 provide the local detection scanner;

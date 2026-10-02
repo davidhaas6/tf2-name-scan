@@ -3,7 +3,7 @@
 This is a lightweight task tracker for the next practical checks, not a complete implementation plan.
 
 - [x] **Separate scanning from searching.** `scan` reports ingestion totals without querying or exporting; `query` reuses saved OCR. Evidence retention is independent of configured names and aliases.
-- [ ] understand how to enable mkldnn or otherwise speed up the detection step.
+- [ ] **Reassess optimization using the current GPU profiles.** The saved GPU profile is dominated by decoding; the older CPU detector oneDNN failure is historical. Inspect acquisition/decode cost before further detector tuning. See [ingestion readiness](ingestion-readiness.md).
 
 - [ ] **Validate Python 3.11 or 3.12 for the pinned Paddle stack.** Run setup, indexing, and a short scan on Windows with a fresh environment; confirm OCR output and warnings, then update `requires-python`, the lockfile, and setup instructions to the verified minimum.
 
@@ -13,7 +13,13 @@ This is a lightweight task tracker for the next practical checks, not a complete
 
 - [x] **Enable the measured faster CPU recognizer setting.** Recognizer oneDNN is on by default; detector oneDNN remains off after a runtime failure. Four-frame pooling and four CPU threads were tried once and were not selected. Fixed-crop and repeated benchmarks remain under P3.
 
-- [ ] **Confirm real-time throughput and source coverage.** The short top-right `uw1.mp4` scan took 16.031 seconds for 11.486 seconds of video (RTF 1.396, excluding model setup). Four later online scans recorded RTF 0.682–0.836, but the 477-second catalog entry has only 455 sampled frames. Verify its media duration/end behavior, then repeat longer scans against fixed starting corpora before claiming sustained throughput. See [longer scan findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28).
+- [x] **Exercise longer scans and chunk boundaries.** Nine completed GPU scans cover 7,655 seconds, each over ten minutes, with complete 1-fps sample grids across 600-second chunk boundaries. Uninterrupted runs have RTF 0.505–0.578 by database timestamps. These are operational results; controlled repetition remains under P1. See [ingestion readiness](ingestion-readiness.md).
+
+- [x] **Validate real interruption/resume and queue continuation.** User-confirmed working; scan 24 resumes at 430 seconds and finishes with all 758 samples. The queue continues after scan 30's HTTP 403. See [ingestion readiness](ingestion-readiness.md).
+
+- [x] **Investigate material early EOF and prevent silent completion.** The scan-15 source is still 476.967 seconds and fresh tail decoding reaches second 476. Bounded decoding now rejects a clean exit more than one sample short and enters existing retry/resume handling. Real local failure/resume and decoder-exit tests pass. The historical decoder cause is unrecorded. See [ingestion readiness](ingestion-readiness.md).
+
+- [x] **Replace the historical short scan with a complete generation.** Reprocessed `4iLIfCzToFY` on 2026-10-01: selected scan 33 has all 477 unique timestamps through second 476, intact representative evidence, and RTF 0.566. Original scan 15 remains preserved with its 455 frames. See [ingestion readiness](ingestion-readiness.md).
 
 - [ ] **R12: Build a small verified video set.** Manually label visible username occurrences and negative regions in one short, exhaustively checked video window; record timestamps, exact names, and stable occurrence IDs. Add a second window from a different HUD or compression setting, keeping each source separate and marking any unlabelled regions as unknown rather than negative.
 

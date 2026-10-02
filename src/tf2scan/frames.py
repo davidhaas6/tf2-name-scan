@@ -151,6 +151,15 @@ def sample_frames(
                     errors.seek(0)
                     detail = errors.read().decode(errors="replace").strip()
                     raise RuntimeError(detail or f"FFmpeg upstream failed (exit {code})")
+                if end is not None:
+                    expected = math.ceil((end - start) * fps - 1e-9)
+                    # FFmpeg's fps filter can round away the final sample at EOF.
+                    # Larger shortfalls must enter ingestion's retry/resume path.
+                    if index < expected - 1:
+                        raise RuntimeError(
+                            f"FFmpeg ended early: decoded {index} sampled frames; "
+                            f"expected approximately {expected} for section {start:g}–{end:g}s"
+                        )
         finally:
             if not completed and process.poll() is None:
                 process.terminate()

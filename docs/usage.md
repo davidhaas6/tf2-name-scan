@@ -102,12 +102,7 @@ Invoke-Item .\output\report\index.html
 
 The report shows each candidate's video, time, matched OCR text, score, supporting frames, and available image evidence. Click a column heading to sort. For an online video, click its time to open the source at that point. Image evidence may show the cluster's representative text if the matching observation's crop was not retained; the report labels which image it shows.
 
-The **Hit** column gives the ID for recording a review:
-
-```powershell
-uv run tf2scan review 42 confirmed --note "Name clearly visible"
-uv run tf2scan review 43 rejected
-```
+The **Hit** column gives the ID for [recording a review](#review-a-candidate).
 
 The same candidates are also written to `output/hits.jsonl`, one JSON object per line. The HTML report is the easiest way to inspect them. You can regenerate it with `uv run tf2scan report`; without `--query-id`, that command includes hits from all saved queries for the selected scans.
 
@@ -129,6 +124,90 @@ uv run tf2scan report --text-clusters
 This writes `output/text_clusters.jsonl`. Each line is one cluster of related text sightings across nearby frames, whether or not it matched a searched name. A record includes the video and time range, representative text and evidence path, plus its individual OCR observations with timestamps, recognized strings, confidence values, and crop paths when retained. It is useful for inspecting what the scanner read or doing your own analysis. It is **not** a list of query matches; use the HTML report or `hits.jsonl` for those. A cluster can contain several observations, and clusters do not necessarily correspond one-to-one with kill events.
 
 The authoritative saved data is `output/results.sqlite3`. The JSONL files and HTML report can be regenerated from it. Running `query` or `report` without `--text-clusters` removes the previous `text_clusters.jsonl` export, so rerun the export when you need it.
+
+## Regenerate or narrow a report
+
+`report` reads saved results; it does not scan videos or run a new name search.
+Use the query ID printed by `query` to show one search, or omit it to include
+hits from all saved queries:
+
+```powershell
+uv run tf2scan report --query-id 3
+uv run tf2scan report
+```
+
+By default, reports use the selected completed scan for each video. To inspect
+historical results, select one video scan or scan run by its database ID (these
+two options cannot be combined). The `video_scan_id` and `scan_run_id` fields
+in `output/hits.jsonl` identify scans and runs for reported hits:
+
+```powershell
+uv run tf2scan report --scan-id 12 --text-clusters
+uv run tf2scan report --run-id 12 --query-id 3
+```
+
+`--text-clusters` also writes `output/text_clusters.jsonl`. `--rows` is an older
+alias for the same export. Report output goes to `output/report/index.html` and
+`output/hits.jsonl` when `output_dir` is `output`.
+
+## Review a candidate
+
+Take the numeric **Hit** ID from the report. Mark it `confirmed`, `rejected`,
+or `unreviewed`; `--note` is optional:
+
+```powershell
+uv run tf2scan review 42 confirmed --note "Name clearly visible"
+uv run tf2scan review 42 unreviewed
+```
+
+This saves the review in the corpus database and regenerates the report. It
+does not change OCR results.
+
+## Calibrate a legacy HUD profile
+
+`calibrate` is for configs with `pipeline: legacy_hud` and a configured HUD
+profile. It is not part of the default detection pipeline. Give it a local
+video path, an indexed video ID, or a video URL:
+
+```powershell
+uv run tf2scan calibrate "C:\videos\game.mp4" --config legacy.yaml --timestamp 15 --profile default_tf2_720p --output calibration.png
+```
+
+It saves an annotated `calibration.png` and an unannotated
+`calibration-original.png` from the requested second. `--timestamp` defaults to
+0, `--output` to `calibration.png`, and `--profile` to the video's configured
+or default profile. For online sources, calibration may download video data.
+
+## Benchmark legacy OCR crops
+
+`benchmark` currently measures the legacy OpenOCR recognizer on already
+cropped, manually labeled images. It requires a `pipeline: legacy_hud` config
+with `ocr.repository`, `ocr.config`, and `ocr.checkpoint` set, plus the OpenOCR
+dependencies. It does not benchmark the default Paddle detection pipeline or
+video decoding. See [evaluation](evaluation.md) for the JSONL manifest fields.
+
+```powershell
+uv run tf2scan benchmark eval/manifest.jsonl --config legacy.yaml --output output/benchmark.json
+```
+
+Image paths in the manifest are relative to the manifest. The command writes
+metrics to the chosen JSON file and per-crop scores to a sibling
+`.scores.jsonl` file. `--output` defaults to `benchmark.json` in the current
+directory.
+
+## Delete an indexed video
+
+Use the video's indexed ID, not its title or URL:
+
+```powershell
+uv run tf2scan delete-video r_mwNcxuxwY
+```
+
+This permanently removes that video's database record, its scan history and
+associated OCR/search results and owned evidence, then regenerates the report.
+It also removes a scanner-managed download, if present. It does not delete a
+user-owned local input file. Indexing a source still listed in `config.yaml`
+can add its video record again.
 
 ## Scan indexed online videos
 
