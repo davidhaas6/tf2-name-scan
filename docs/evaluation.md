@@ -1,5 +1,10 @@
 # Building and measuring the evaluation set
 
+For a fresh-corpus production scan baseline with retained timings and optional
+local-versus-stream comparison, see [scan benchmark](scan-benchmark.md).
+That small wrapper measures throughput and sample coverage; it does not replace
+the labelled accuracy evaluation below.
+
 Use the HLD's demo-parser/SourceDemoRender process for demo-derived samples and
 manually verified real-video crops. The old `killfeed-search/test-data` directory
 contains useful candidate images and video, but its OCR output is not verified

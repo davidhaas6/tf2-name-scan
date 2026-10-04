@@ -340,6 +340,7 @@ def ingest_detected(
     frame_source=None,
     profile=None,
     estimate=None,
+    stream_resolver=None,
 ):
     overrides = {"sampling": {"fps": fps}} if fps is not None else None
     settings = merge_settings(config.data, overrides)
@@ -379,7 +380,9 @@ def ingest_detected(
                 raise FileNotFoundError(video["local_path"])
             for retry in range(settings["acquisition"]["attempts"]):
                 try:
-                    path, duration, dimensions, _, headers = resolve_stream(video)
+                    path, duration, dimensions, _, headers = (stream_resolver or resolve_stream)(
+                        video
+                    )
                     break
                 except Exception:
                     if retry + 1 == settings["acquisition"]["attempts"]:

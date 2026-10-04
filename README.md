@@ -42,6 +42,10 @@ FFmpeg-dependent tests are skipped if FFmpeg is unavailable.
 See the [high-level design](docs/high-level-design.md) and
 [evaluation guide](docs/evaluation.md). No public search service is included.
 
+For one production scan with retained history, run
+`uv run python eval/benchmark_scan.py benchmark`. See the
+[scan benchmark guide](docs/scan-benchmark.md) for cached local input and comparison mode.
+
 ## Usage
 
 ```bash

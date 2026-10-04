@@ -3,23 +3,33 @@ from urllib.parse import urlparse
 
 from .ytdlp_options import with_node
 
+VIDEO_FORMAT = "bestvideo[height<=720]/bestvideo"
 
-def resolve_stream(video):
-    """Resolve a VOD to one video-only media URL without retaining a download."""
+
+def resolve_media(source_url, format_id=None):
+    """Resolve the production video selection, optionally pinning a benchmark format."""
     from yt_dlp import YoutubeDL
 
     with YoutubeDL(
         with_node(
-            format="bestvideo[height<=720]/bestvideo",
+            format=format_id or VIDEO_FORMAT,
             noplaylist=True,
             quiet=True,
             skip_download=True,
             retries=2,
         )
     ) as ydl:
-        info = ydl.extract_info(video["source_url"], download=False)
+        info = ydl.extract_info(source_url, download=False)
     if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
         raise ValueError("Live streams are unsupported; index a bounded VOD")
+    if format_id and str(info.get("format_id")) != str(format_id):
+        raise ValueError(f"Requested video format {format_id} is unavailable")
+    if format_id and (info.get("vcodec") in (None, "none") or info.get("acodec") != "none"):
+        raise ValueError(f"Requested format {format_id} is not video-only")
+    return info
+
+
+def stream_details(info, video):
     duration = info.get("duration") or video.get("duration_s")
     if not isinstance(duration, (int, float)) or not 0 < duration < float("inf"):
         raise ValueError("A finite VOD duration is required for bounded scanning")
@@ -29,8 +39,13 @@ def resolve_stream(video):
     dimensions = {"width": info.get("width"), "height": info.get("height")}
     if not all(isinstance(value, int) and value > 0 for value in dimensions.values()):
         dimensions = None
-    host = urlparse(video["source_url"]).hostname
+    host = urlparse(video.get("source_url", "")).hostname
     return url, float(duration), dimensions, host, info.get("http_headers") or {}
+
+
+def resolve_stream(video):
+    """Resolve a VOD to one video-only media URL without retaining a download."""
+    return stream_details(resolve_media(video["source_url"]), video)
 
 
 def download(store, video):
