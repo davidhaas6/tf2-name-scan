@@ -109,3 +109,8 @@ Further runtime tuning should follow current GPU stage profiles, rather than
 the older CPU detector oneDNN task. `output/admiralty-perf-gpu-2.json`, for
 example, reports decoding as the largest measured stage (64.903 of 87.742 scan
 seconds), with detection at 4.062 seconds and recognition at 6.438 seconds.
+
+The next optimization work is scoped in the root [tickets folder](../tickets/),
+with its implementation order and checkboxes in [todo](todo.md). These tickets
+cover acquisition/decode attribution, evidence-reference indexes, bounded startup
+recovery, and moving the existing region crop before pipe transfer.

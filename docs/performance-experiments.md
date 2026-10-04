@@ -1,5 +1,11 @@
 # Experiments toward near-realtime scanning
 
+**Current GPU priorities (2026-10-02):** Follow the scoped documents in the root
+[tickets folder](../tickets/) and the [near-term tracker](todo.md). Recent GPU
+profiles put acquisition/frame waiting first by cost, and evidence-reference
+lookups have a confirmed indexing opportunity. The CPU measurements below remain
+historical evidence; use the current recommended order at the end of this document.
+
 Proposed on 2026-09-27 after reviewing [profiling findings](scan-profiling-findings.md), the local JSON report, and the production scan path. The budget and experiment descriptions below record the original plan. See [measured follow-up](scan-profiling-findings.md#incremental-cleanup-and-current-cpu-default-2026-09-28) for the subsequent cleanup and runtime results.
 
 As of 2026-09-28, incremental batch cleanup and oneDNN recognition are implemented. The short top-right profile took 16.031 seconds for 11.486 seconds of video (RTF 1.396), including 4.200 seconds of startup orphan recovery and excluding 4.880 seconds of model setup. Excluding startup recovery too gives RTF about 1.03. Four subsequent online scans of 148–477 catalog seconds each recorded RTF 0.682–0.836 by per-video database timestamps; three sampled every expected second, while the 477-second entry stopped at timestamp 454 s. See [longer scan findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28). Four-frame pooling and four CPU threads were tried once and were not selected as defaults. Repeatability, full source coverage for the 477-second entry, and OCR accuracy remain open.
@@ -114,6 +120,21 @@ The small verified set in R12/R13 should run alongside these experiments. Exact-
 
 ## Recommended order
 
-First verify the 477-second entry's actual media duration and end behavior. Build the small verified occurrence set, then repeat longer full-frame and top-right baselines against identical starting corpora while measuring startup, throughput, memory and result latency. Validate incremental cleanup scaling and recovery cases. Run fixed-crop batching and runtime comparisons before changing their defaults. Use those results and the verified labels to decide whether temporal reuse, region policies, or model/device changes are justified.
+The current implementation order is **reference indexes → simple scan benchmark with history/cache → acquisition/decode attribution → targeted frame-delivery optimization → bounded startup recovery → GPU batching**.
 
-Defer broad parallelization until these results are known. Detection and recognition currently run serially, but both may compete for the same CPU resources. A bounded pipeline experiment should measure queue depth, resource contention, memory and result latency; theoretical stage overlap is not an assured end-to-end gain. JPEG tuning, generic SQL tuning and faster decode are lower priority given the current measurements.
+Start with [ticket 2](../tickets/02-evidence-reference-indexes.md), then complete
+[ticket 6](../tickets/06-scan-benchmark-history.md) before
+[ticket 1](../tickets/01-acquisition-decode-attribution.md). Ticket 6 provides a
+small wrapper with saved history and cached local/stream comparisons, defaulting
+to `GCN-CzALyq0`; it does not introduce a full evaluation suite. Use attribution to
+choose the frame-delivery optimization; [ticket 5](../tickets/05-early-region-cropping.md)
+is the candidate that moves the existing region crop earlier. Follow with
+[ticket 3](../tickets/03-bounded-startup-recovery.md). GPU batch occupancy is a
+later experiment; the older CPU pooling trial does not establish GPU behavior.
+
+The 477-second source and replacement scan now have verified timestamp coverage;
+see [ingestion readiness](ingestion-readiness.md). Continue the verified occurrence
+set and repeatable baselines alongside these tickets. Changes to sampling,
+resolution, region coverage, or approximate OCR reuse still require accuracy
+evaluation. Measure queue depth, memory, contention, and commit latency for any
+pipeline overlap experiment; theoretical overlap is not an assured speedup.
