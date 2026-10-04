@@ -78,6 +78,25 @@ ALTER TABLE chunk_attempts ADD COLUMN requested_end_s REAL;
 ALTER TABLE chunk_attempts ADD COLUMN elapsed_s REAL;
 ALTER TABLE chunk_attempts ADD COLUMN media_bytes INTEGER;
 """)
+MIGRATIONS.append("""
+CREATE INDEX IF NOT EXISTS text_clusters_evidence_path ON text_clusters(evidence_path)
+ WHERE evidence_path IS NOT NULL;
+CREATE INDEX IF NOT EXISTS text_clusters_frame_path ON text_clusters(frame_path)
+ WHERE frame_path IS NOT NULL;
+CREATE INDEX IF NOT EXISTS observations_crop_path ON observations(crop_path)
+ WHERE crop_path IS NOT NULL;
+CREATE INDEX IF NOT EXISTS observations_legacy_evidence_path ON observations(legacy_evidence_path)
+ WHERE legacy_evidence_path IS NOT NULL;
+CREATE INDEX IF NOT EXISTS sampled_frames_full_frame_path ON sampled_frames(full_frame_path)
+ WHERE full_frame_path IS NOT NULL;
+""")
+
+
+EVIDENCE_REFERENCE_QUERY = (
+    "SELECT 1 FROM text_clusters WHERE evidence_path=? OR frame_path=? "
+    "UNION SELECT 1 FROM observations WHERE crop_path=? OR legacy_evidence_path=? "
+    "UNION SELECT 1 FROM sampled_frames WHERE full_frame_path=? LIMIT 1"
+)
 
 
 class Store(LineageStore):
@@ -316,13 +335,12 @@ class Store(LineageStore):
                 continue
             if profile:
                 profile.counts["asset_files_checked"] += 1
-            referenced = self.db.execute(
-                "SELECT 1 FROM text_clusters WHERE evidence_path=? OR frame_path=? "
-                "UNION SELECT 1 FROM observations WHERE crop_path=? OR legacy_evidence_path=? "
-                "UNION SELECT 1 FROM sampled_frames WHERE full_frame_path=? LIMIT 1",
-                (value,) * 5,
-            ).fetchone()
+            reference_started = time.perf_counter() if profile else None
+            referenced = self.db.execute(EVIDENCE_REFERENCE_QUERY, (value,) * 5).fetchone()
             if profile:
+                profile.seconds["evidence_reference_lookup"] += (
+                    time.perf_counter() - reference_started
+                )
                 profile.counts["referenced_paths_examined"] += 1
             if not referenced and candidate.is_file():
                 candidate.unlink()

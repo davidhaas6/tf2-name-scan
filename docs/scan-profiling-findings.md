@@ -100,3 +100,68 @@ Four later completed scans in `output/results.sqlite3` used the same top-right, 
 | **Combined** | **1,219 s** | **966 s** | **0.792×** | **1,197 / 1,219** |
 
 These recorded scans are faster than real time by catalog duration, and the three with complete timestamp coverage are individually below RTF 1. Scan 15 is marked completed but its last sampled timestamp is 454 s despite a 477 s catalog duration. The media may be shorter than the catalog entry or scanning may have stopped early; this needs source-duration verification before treating it as fully covered. Even dividing its 392 s wall time by the 455 sampled seconds gives about 0.86×, so that gap does not explain away its measured throughput. The scans were consecutive in one process, so model setup and one-time orphan recovery were amortized. They vary in text density and source content, and no manual name-coverage evaluation has been done.
+
+## Admiralty GPU follow-up after ticket 2 (2026-10-02)
+
+Reprocessed **Admiralty of an Anchor** (`GCN-CzALyq0`, 148 seconds) using the
+same settings as both saved GPU profiles: 1 fps, top-right region, 720-pixel
+working height, GPU detector and recognizer, one-frame pooling, and representative
+evidence compaction. The new run used an isolated copy of the current corpus,
+containing 27,950 clusters, 51,643 observations, 10,884 sampled frames, and 27,951
+evidence files before scanning. The source database and earlier profiles were
+preserved. The earlier runs used smaller evolving corpora rather than an identical
+starting snapshot; this is a historical comparison, not a controlled throughput
+benchmark. Fixed-snapshot index/scaling experiments are recorded in
+[evidence-reference indexes](evidence-reference-indexes.md).
+
+The saved profiles are `output/admiralty-perf-gpu.json`,
+`output/admiralty-perf-gpu-2.json`, and the new
+`output/admiralty-perf-gpu-ticket2.json`. Validation and derived comparisons are
+in `output/admiralty-ticket2-comparison.json` (all ignored experiment output).
+The initial network-restricted attempt failed before frames were decoded; the
+successful retry below ran with network access in a fresh process.
+
+| Measurement | GPU run 1 | GPU run 2 | After ticket 2 |
+|---|---:|---:|---:|
+| Scan wall, s | 89.200 | 87.742 | 107.524 |
+| Scan RTF | 0.603 | 0.593 | 0.727 |
+| Startup orphan cleanup, s | 8.031 | 7.338 | 26.602 |
+| Wall excluding startup, s | 81.169 | 80.404 | 80.922 |
+| RTF excluding startup | 0.548 | 0.543 | 0.547 |
+| Decoding / frame waiting, s | 64.755 | 64.903 | 65.025 |
+| Detection, s | 4.067 | 4.062 | 4.130 |
+| Crop preparation, s | 0.940 | 0.921 | 0.904 |
+| Recognition, s | 6.992 | 6.438 | 7.855 |
+| Persistence/evidence, s | 2.726 | 2.650 | 1.018 |
+| Routine compaction (within persistence), s | 1.701 | 1.668 | 0.083 |
+| Transaction (within persistence), s | 1.024 | 0.982 | 0.934 |
+| Other, s | 1.690 | 1.428 | 1.989 |
+| Model setup (outside scan wall), s | 14.690 | 5.467 | 5.319 |
+
+Ticket 2 reduces routine compaction time by **95.0–95.1%**, saving about
+1.59–1.62 seconds across 22 persistence batches. The new run checks and deletes
+104 paths, matching run 2, with only 0.003 seconds spent in indexed reference
+queries. Older profiles did not separately time targeted queries; their zero
+`reference_lookup` values do not mean that work was free. Total persistence time
+falls by **61.6–62.7%** despite the larger starting corpus.
+
+Overall scan time is **20.5–22.5% longer** than the earlier GPU runs because
+startup cleanup costs another 18.57–19.26 seconds. This full sweep remains
+outside ticket 2's optimization and is the focus of ticket 3. Excluding startup,
+the pipeline is effectively unchanged: 80.922 seconds versus 80.404–81.169
+seconds (within 0.7%). The 0.86–1.42 seconds of additional recognition time and
+variation in other stages offset most of the compaction savings. One new run
+does not establish a recognition regression or a steady-state speed improvement.
+Frame delivery remains the largest recurring cost at about 65 seconds, essentially
+unchanged; ticket 1 should attribute acquisition and decoding before tuning it.
+
+All three profiles have 148 sampled frames, 734 recognition crops, the same
+1280x720 source/working resolution and 640x360 detector region. The new scan has
+every integer timestamp 0–147, 627 accepted observations and 394 clusters,
+matching both older scans. Detector and recognizer weights hashes match across
+all three. The new observation hash (timestamp, geometry key, raw text, and OCR
+confidence) exactly matches run 2:
+`e26ac4d06aeee46a3991475d7f024b9bf839e86ba145ba685bb5ebfa9c5a5f78`.
+No representatives are missing and SQLite reports no foreign-key violations.
+These checks establish coverage and output preservation for this replay, not
+manually labelled username recall.
