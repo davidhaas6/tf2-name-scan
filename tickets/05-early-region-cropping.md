@@ -1,6 +1,9 @@
 # 5. Crop the existing detector region before pipe transfer
 
-Status: open. Evaluate after [acquisition/decode attribution](01-acquisition-decode-attribution.md).
+Status: open. [Acquisition/decode attribution](01-acquisition-decode-attribution.md)
+found the dominant streaming delay is upstream HTTP request policy, not pipe
+payload, so this is a separate frame-delivery optimization rather than the fix
+for the streaming gap.
 
 ## Problem
 

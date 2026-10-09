@@ -1,5 +1,11 @@
 # Production scan benchmark
 
+**Acquisition follow-up (2026-10-03):** [The streaming investigation](acquisition-attribution.md)
+isolates bounded versus continuous HTTP requests as the dominant cause of the
+local/remote gap. A fresh equivalent production pair takes 12.258/80.650 seconds;
+repeated same-URL transfers take about 2.7/76.3 seconds depending only on the
+request policy. Production settings remain unchanged.
+
 Run one fresh-corpus scan using the same detector, recognizer, ingestion path,
 acquisition policy and `ScanProfile` as `tf2scan scan --reprocess --perf-output`:
 
@@ -146,7 +152,8 @@ The production `output/results.sqlite3` SHA-256 was identical before and after:
 Artifacts are retained under `output/benchmarks/runs/<run-id>/`, with one record
 in `output/benchmarks/history.jsonl`. All 125 tests and Ruff checks passed.
 Local/cache and comparison behavior were verified offline; a real local/stream
-pair remains a profiling follow-up for ticket 1. This single fresh-corpus result
+pair was later attributed by [ticket 1](../tickets/01-acquisition-decode-attribution.md)
+(see the acquisition follow-up note above). This single fresh-corpus result
 does not establish speed changes relative to older growing-corpus scans.
 
 ## Default local/stream comparison (2026-10-02)
@@ -182,8 +189,10 @@ all representative evidence files exist.
 
 The streamed scan took 68.429 seconds longer, with 63.596 seconds of that gap in
 the current decoding/frame-wait stage. This stage combines acquisition and
-decoding; ticket 1 should separate those costs before choosing an optimization.
-This is one ordered pair, not a repeated throughput estimate. The profiles,
+decoding; [ticket 1](../tickets/01-acquisition-decode-attribution.md) later
+separated those costs and attributed the gap to bounded HTTP requests (see the
+acquisition follow-up note above). This is one ordered pair, not a repeated
+throughput estimate. The profiles,
 corpora and logs are retained in each run directory; `comparison.json` is in
 the local run directory, and both runs are appended to `history.jsonl`.
 
@@ -223,7 +232,8 @@ geometry key, raw text and OCR confidence matches exactly:
 `5b402f034b2f05694c5fa753d487be1efa4f302f7d41fc011be2e9fe45feef8b`.
 
 This longer AV1 example reinforces the earlier H.264 result: download-first
-wins even including initial cache preparation. Neither pair isolates HTTP
-request behavior, server throttling, buffering or decoder scheduling, so the
-specific reason FFmpeg's remote input waits remains unproven. These are two
-different videos/formats, not repeated trials of one workload.
+wins even including initial cache preparation. These pairs did not isolate HTTP
+request behavior, but [ticket 1](../tickets/01-acquisition-decode-attribution.md)
+subsequently proved bounded versus continuous requests as the cause (see the
+acquisition follow-up note above). These are two different videos/formats, not
+repeated trials of one workload.

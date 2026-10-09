@@ -1,8 +1,9 @@
 # 1. Attribute acquisition and frame-delivery cost
 
-Status: open. Implement after [reference indexes](02-evidence-reference-indexes.md)
-and [the simple scan benchmark](06-scan-benchmark-history.md). Ticket 6 must be
-complete before starting this ticket.
+Status: complete (2026-10-03). See [acquisition attribution](../docs/acquisition-attribution.md)
+for the fresh production baseline, repeated acquisition/decoder controls, CPU and
+memory measurements, and the measured recommendation. Bounded HTTP acquisition
+is [ticket 7](07-bounded-http-acquisition.md); production defaults remain unchanged.
 
 ## Problem
 

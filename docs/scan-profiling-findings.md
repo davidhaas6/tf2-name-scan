@@ -153,7 +153,8 @@ seconds (within 0.7%). The 0.86–1.42 seconds of additional recognition time an
 variation in other stages offset most of the compaction savings. One new run
 does not establish a recognition regression or a steady-state speed improvement.
 Frame delivery remains the largest recurring cost at about 65 seconds, essentially
-unchanged; ticket 1 should attribute acquisition and decoding before tuning it.
+unchanged; [ticket 1](acquisition-attribution.md) later attributed it to
+unbounded HTTP requests.
 
 All three profiles have 148 sampled frames, 734 recognition crops, the same
 1280x720 source/working resolution and 640x360 detector region. The new scan has

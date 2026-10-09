@@ -120,17 +120,21 @@ The small verified set in R12/R13 should run alongside these experiments. Exact-
 
 ## Recommended order
 
-The current implementation order is **reference indexes → simple scan benchmark with history/cache → acquisition/decode attribution → targeted frame-delivery optimization → bounded startup recovery → GPU batching**.
+The current implementation order is **reference indexes → simple scan benchmark with history/cache → acquisition/decode attribution → bounded HTTP acquisition → bounded startup recovery → GPU batching**.
 
 Start with [ticket 2](../tickets/02-evidence-reference-indexes.md), then complete
 [ticket 6](../tickets/06-scan-benchmark-history.md) before
 [ticket 1](../tickets/01-acquisition-decode-attribution.md). Ticket 6 provides a
 small wrapper with saved history and cached local/stream comparisons, defaulting
-to `GCN-CzALyq0`; it does not introduce a full evaluation suite. Use attribution to
-choose the frame-delivery optimization; [ticket 5](../tickets/05-early-region-cropping.md)
-is the candidate that moves the existing region crop earlier. Follow with
-[ticket 3](../tickets/03-bounded-startup-recovery.md). GPU batch occupancy is a
-later experiment; the older CPU pooling trial does not establish GPU behavior.
+to `GCN-CzALyq0`; it does not introduce a full evaluation suite.
+[Ticket 1](../tickets/01-acquisition-decode-attribution.md) attributed the
+dominant delay to unbounded HTTP requests and selected
+[ticket 7](../tickets/07-bounded-http-acquisition.md) (bounded HTTP acquisition)
+as the next step. [Ticket 5](../tickets/05-early-region-cropping.md) remains a
+separate frame-delivery optimization but does not address the upstream delay.
+Follow with [ticket 3](../tickets/03-bounded-startup-recovery.md). GPU batch
+occupancy is a later experiment; the older CPU pooling trial does not establish
+GPU behavior.
 
 The 477-second source and replacement scan now have verified timestamp coverage;
 see [ingestion readiness](ingestion-readiness.md). Continue the verified occurrence
