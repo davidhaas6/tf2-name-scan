@@ -1,7 +1,8 @@
 # Demo-window ground-truth validation (R12 demo-derived first slice)
 
 Status: **implemented and measured (2026-10-12).** Plan below; results in the
-[Results](#results) section.
+[Results](#results) section. For the command sequence, see the
+[R12 demo-window eval runbook](r12-demo-eval-runbook.md).
 
 This is a deliberately minimal slice of R12: compare an unordered set of
 names the local pipeline reports against an unordered set of ground-truth names
