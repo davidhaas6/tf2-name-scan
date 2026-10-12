@@ -12,8 +12,14 @@ evidence inventory, and the historical short scan investigation.
 Bounded FFmpeg sampling now rejects a successful process exit when output is
 more than one sample short of the requested section. The existing retry/resume
 path handles this error while preserving committed batches. Current validation:
-103 tests pass; Ruff passes. Name accuracy evaluation remains pending labels.
-The CPU setup and earlier validation totals below are historical milestones.
+103 tests pass; Ruff passes. Name evaluation has a first slice: a demo-derived
+presence check on one 180 s SourceTV window found all 18 kill/death
+participants with zero missed names, and a negative battery measured the
+first false-candidate counts (clean realistic absent names; heavy
+short-name and near-duplicate collisions). This is an upper bound on clean
+input, not the labeled occurrence dataset R12/R13 still describe. See
+[demo-window validation](demo-window-validation.md). The CPU setup and
+earlier validation totals below are historical milestones.
 
 ## Current milestone: search, evidence and reports complete
 

@@ -1,5 +1,11 @@
 # Building and measuring the evaluation set
 
+A first minimal slice exists: demo-derived ground truth and a presence
+(name-set) comparison on one clean SourceTV window, plus a negative-query
+battery, are recorded in [demo-window validation](demo-window-validation.md).
+It is an upper bound on easy input; the labeled occurrence dataset this page
+describes remains the accuracy evaluation.
+
 For a fresh-corpus production scan baseline with retained timings and optional
 local-versus-stream comparison, see [scan benchmark](scan-benchmark.md).
 That small wrapper measures throughput and sample coverage; it does not replace
