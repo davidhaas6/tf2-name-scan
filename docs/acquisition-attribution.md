@@ -206,6 +206,13 @@ into production would skip that requirement.
 
 ## Recommendation and limits
 
+**Resolved 2026-10-12:** see [bounded streaming acquisition](bounded-streaming.md).
+FFmpeg 9 exposes `-request_size` and `-multiple_requests`; together they drain the
+same URL in about 7 s versus 79 s direct, matching the diagnostic reader. The
+project selects the supported FFmpeg option (ticket 7) and does not build a
+production loopback reader. The recommendation below is retained as the original
+attribution record.
+
 Prioritize **bounded HTTP media requests** in the streaming acquisition path.
 Download-first already supplies this behavior and explains the existing wins.
 Hardware decoding, earlier cropping and Python frame prefetch do not address the

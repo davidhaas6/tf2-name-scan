@@ -1,6 +1,9 @@
 # 7. Bound HTTP requests in streaming acquisition
 
-Status: open. Follow-up to [acquisition/decode attribution](01-acquisition-decode-attribution.md),
+Status: open. Approach selected 2026-10-12: native FFmpeg 9 bounded-request
+options (`-request_size` + `-multiple_requests`), not a seekable reader. See
+[bounded streaming decision](../docs/bounded-streaming.md). Follow-up to
+[acquisition/decode attribution](01-acquisition-decode-attribution.md),
 which isolated unbounded HTTP requests as the dominant cause of the local/remote
 gap. See [acquisition attribution](../docs/acquisition-attribution.md).
 Production defaults are unchanged until this ticket delivers a measured win.
@@ -18,20 +21,23 @@ streaming scan-wall gap to acquisition waiting.
 
 ## Work
 
-- Replace direct FFmpeg URL input with an acquisition path that uses bounded HTTP
-  requests. Evaluate either a supported FFmpeg build exposing bounded-request
-  options or a seekable yt-dlp-backed reader, per the attribution
-  [recommendation](../docs/acquisition-attribution.md#recommendation-and-limits).
-  Pick one approach and document why.
+- Replace direct FFmpeg URL input with bounded HTTP requests. **Decided:** use the
+  supported FFmpeg build's `-request_size` + `-multiple_requests` options; the
+  diagnostic reader was only as fast and far more complex. See
+  [bounded streaming decision](../docs/bounded-streaming.md). Require FFmpeg 9+
+  with a clear capability error; do not fall back silently to unbounded requests.
 - Preserve existing behavior: one upstream stream per host, chunk overlap,
   timestamp watermarks, complete 1-fps sample grids, EOF/short-source detection,
-  retry/resume, and cancellation. A plain yt-dlp-to-stdin pipe is not a drop-in
-  replacement for the current input seeks.
-- Cancel superseded reads explicitly and enforce the upstream concurrency limit.
-  The diagnostic proxy permits brief overlapping responses during FFmpeg seeks;
-  that is acceptable for attribution, not for production.
-- Keep production sampling, model, region and reporting defaults unchanged. If
-  bounded streaming is not supportable, download-first is a measured fallback.
+  retry/resume, and cancellation. With native options FFmpeg owns the HTTP
+  lifecycle; Phase A must confirm persistent connections keep the production
+  `-ss`/`-t` sections to one upstream connection per process.
+- Do not copy the diagnostic proxy's permissive overlap into production. The
+  native options replace the reader, so superseded-read cancellation is no longer
+  hand-implemented; `acquisition.streams_per_host` keeps its `==1` validation and
+  means one consumed media stream per host.
+- Keep production sampling, model, region and reporting defaults unchanged until
+  the end-to-end benchmark shows the measured win. Download-first remains a
+  documented fallback for environments without FFmpeg 9.
 - Change acquisition only; do not alter OCR, retention, or matching behavior.
 
 ## Acceptance
