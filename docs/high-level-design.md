@@ -363,17 +363,19 @@ All stages must be idempotent. A failure in download, decode, or OCR should upda
 
 ## 6. Evaluation plan
 
+**Implementation status (2026-10-12): the MVP accuracy gate was re-scoped mid-implementation.** This plan originally built a manually labeled real-video set first. After the initial spot checks and one demo-derived validation slice, the MVP chose a cheaper path in order to ship faster: the demo event stream supplies occurrence ground truth at no annotation cost, and the pipeline is checked against it for occurrence recall. Manual real-video annotation and the crop/manifest harness are deferred until after the MVP ships. The provisional gates below are unchanged and still provisional - the demo-derived set cannot establish them with confidence, but it is enough to catch a broken pipeline before release. See [demo-window validation](demo-window-validation.md) and [the near-term tracker](todo.md).
+
 ### 6.1 What the dataset should represent
 
 The evaluation unit is a **visible username occurrence**, not an individual frame. Adjacent frames showing the same killfeed notice are one occurrence.
 
-For the MVP, build the real-video set first. A small manual set is cheaper than implementing demo parsing, SourceDemoRender automation, and HUD-specific alignment before the scanner has been benchmarked. Add a demo-rendered set later when controlled variation or fine-tuning data is worth that engineering cost.
+The original MVP plan built the real-video set first, on the assumption that a small manual set would be cheaper than demo parsing and render automation before the scanner was benchmarked. The implemented MVP reversed that order: the demo event stream already supplies occurrence truth at no annotation cost, so it is the current accuracy reference, and the manually labeled real-video set is deferred until after the MVP ships. A demo-rendered set also remains the basis for later controlled variation and fine-tuning data.
 
 Split by source video (or source demo), never by frame. Otherwise nearly identical neighboring frames leak into both train and test sets and inflate accuracy.
 
 The real-video set does not need to contain the user's actual name. Label the visible names and treat each one as a temporary target during evaluation. This tests the same retrieval behavior without first having to find known appearances of the real target.
 
-### 6.2 MVP manual annotation set
+### 6.2 Manual annotation set (deferred post-MVP)
 
 1. Select three roughly 10-minute VODs with different HUD layouts, resolutions, motion backgrounds, and compression artifacts.
 2. Sample them with the same frame policy as the scanner, then manually label about 100 visible killfeed username occurrences. For each occurrence, record the text polygon, exact visible transcription, source video, and visible time span.
@@ -406,7 +408,9 @@ Use a small JSONL manifest so every model sees exactly the same data:
 
 This manual set is sufficient to choose the V1 recognizer and tune thresholds. It is not by itself enough to establish product gates with high confidence; report grouped confidence intervals and expand the set when a gate is close.
 
-### 6.3 Later: generating the demo-rendered set
+### 6.3 Demo-rendered set (current MVP path)
+
+For the MVP only each death event's killer/victim name and kill time are used, without polygon labels. The fuller labeling below applies if the demo-rendered set is later expanded for controlled variation.
 
 1. Collect TF2 POV/STV `.dem` files containing varied player names and combat density.
 2. Parse them with the current `demostf/parser` project (the old GitHub repository points to its maintained Codeberg home).
@@ -516,10 +520,10 @@ Important corpus invariants:
 
 1. **Vertical slice:** one local or remote chunk, streamed through yt-dlp and FFmpeg, PP-OCRv6-small detection and recognition, geometric deduplication and crop caps, crop rectification, explicit useful-text filtering, alias matching, and console timestamps.
 2. **Lineage, evidence, and clustering:** scan runs, chunked video scans, observation-to-cluster links, separate nullable frame/crop evidence, versioned geometry, confidence values, 3-second temporal clustering with motion continuity, target-independent text clusters, SQLite, and an HTML report.
-3. **MVP evaluation:** manually annotate three short VODs, build the manifest and benchmark harness, measure PP-OCRv6-small-det/rec end to end, tune thresholds, and report grouped confidence intervals.
+3. **MVP evaluation:** use the demo event stream as occurrence ground truth, measure PP-OCRv6-small-det/rec end to end for occurrence recall, and decide ship/no-ship. Manual real-video annotation, threshold tuning, and confidence intervals are deferred post-MVP.
 4. **Acquisition hardening:** yt-dlp indexing, fixed chunk ranges, stream retries/backoff, overlap deduplication, WAL/batched writes, and resume behavior.
 5. **Model and runtime comparisons:** benchmark the tiny detector and SVTRv2 T/S/B recognition arms; adopt SVTRv2 only if the V1 Paddle recognizer misses the recall or throughput target; export to ONNX Runtime after correctness is established.
-6. **Scale pass:** optional demo-rendered evaluation data, batch sizing, throughput tuning, deletion/retention policy, corpus export, and long-run reliability.
+6. **Scale pass:** batch sizing, throughput tuning, deletion/retention policy, corpus export, and long-run reliability; the deferred manually labeled real-video set joins here.
 
 Do not implement the VLM fallback or fine-tuning until the evaluation report shows a specific failure mode they can address.
 
