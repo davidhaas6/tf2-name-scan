@@ -9,7 +9,7 @@ from test_detection import Recognizer, box, frame
 
 from tf2scan.config import Config
 from tf2scan.detection import FakeDetector
-from tf2scan.frames import frame_iterator, sample_frames
+from tf2scan.frames import bounded_request_supported, frame_iterator, sample_frames
 from tf2scan.ingestion import ingest
 from tf2scan.storage import Store
 
@@ -331,3 +331,129 @@ def test_failed_reprocess_keeps_completed_evidence(tmp_path, monkeypatch):
             )
         assert store.selected_scan_ids() == [original]
         assert (store.root / evidence).is_file()
+
+
+class _NoFrameProcess:
+    """Minimal Popen stand-in that reports a clean exit after an empty drain."""
+
+    def __init__(self):
+        self.stdout = BytesIO(b"")
+
+    def wait(self, timeout=None):
+        return 0
+
+
+def _capture_command(monkeypatch):
+    captured = {}
+
+    def fake_popen(command, *args, **kwargs):
+        captured["command"] = command
+        return _NoFrameProcess()
+
+    monkeypatch.setattr("tf2scan.frames.subprocess.Popen", fake_popen)
+    return captured
+
+
+def _forbidden_probe():
+    raise AssertionError("capability probe must not run for this input")
+
+
+def test_bounded_http_command_has_request_flags(monkeypatch):
+    monkeypatch.setattr("tf2scan.frames.bounded_request_supported", lambda: True)
+    captured = _capture_command(monkeypatch)
+    list(
+        sample_frames(
+            "https://cdn.example/video",
+            end=1,
+            dimensions={"width": 2, "height": 2},
+            bounded_requests=True,
+        )
+    )
+    command = captured["command"]
+    assert command[command.index("-request_size") + 1] == "10485760"
+    assert command[command.index("-multiple_requests") + 1] == "1"
+
+
+def test_bounded_http_respects_custom_size_and_no_persistence(monkeypatch):
+    monkeypatch.setattr("tf2scan.frames.bounded_request_supported", lambda: True)
+    captured = _capture_command(monkeypatch)
+    list(
+        sample_frames(
+            "https://cdn.example/video",
+            end=1,
+            dimensions={"width": 2, "height": 2},
+            bounded_requests=True,
+            request_size_bytes=3145728,
+            persistent_connections=False,
+        )
+    )
+    command = captured["command"]
+    assert command[command.index("-request_size") + 1] == "3145728"
+    assert "-multiple_requests" not in command
+
+
+def test_unbounded_http_command_has_no_request_flags(monkeypatch):
+    monkeypatch.setattr("tf2scan.frames.bounded_request_supported", _forbidden_probe)
+    captured = _capture_command(monkeypatch)
+    list(
+        sample_frames(
+            "https://cdn.example/video",
+            end=1,
+            dimensions={"width": 2, "height": 2},
+            bounded_requests=False,
+        )
+    )
+    command = captured["command"]
+    assert "-request_size" not in command
+    assert "-multiple_requests" not in command
+
+
+def test_local_source_ignores_bounded_request_flags(monkeypatch, tmp_path):
+    monkeypatch.setattr("tf2scan.frames.bounded_request_supported", _forbidden_probe)
+    captured = _capture_command(monkeypatch)
+    list(
+        sample_frames(
+            str(tmp_path / "clip.mp4"),
+            end=1,
+            dimensions={"width": 2, "height": 2},
+            bounded_requests=True,
+        )
+    )
+    command = captured["command"]
+    assert "-request_size" not in command
+    assert "-multiple_requests" not in command
+
+
+def test_bounded_requires_capable_ffmpeg(monkeypatch):
+    class Help:
+        stdout = "  -multiple_requests  <boolean>  use persistent connections\n"
+        stderr = ""
+
+    monkeypatch.setattr("tf2scan.frames.subprocess.run", lambda *args, **kwargs: Help())
+    bounded_request_supported.cache_clear()
+    assert bounded_request_supported() is False
+    with pytest.raises(RuntimeError, match="FFmpeg 9\\+.*request_size"):
+        list(
+            sample_frames(
+                "https://cdn.example/video",
+                end=1,
+                dimensions={"width": 2, "height": 2},
+                bounded_requests=True,
+            )
+        )
+    bounded_request_supported.cache_clear()
+
+
+def test_bounded_request_size_must_be_positive_integer(monkeypatch):
+    monkeypatch.setattr("tf2scan.frames.subprocess.Popen", lambda *args, **kwargs: None)
+    for value in (0, -1, 1.5, True, "10485760"):
+        with pytest.raises(ValueError, match="request_size_bytes"):
+            list(
+                sample_frames(
+                    "https://cdn.example/video",
+                    end=1,
+                    dimensions={"width": 2, "height": 2},
+                    bounded_requests=True,
+                    request_size_bytes=value,
+                )
+            )

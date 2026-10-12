@@ -494,6 +494,7 @@ def ingest_detected(
                         source = frame_source
                         source_used = True
                     else:
+                        acquisition = settings["acquisition"]
                         source = sample_frames(
                             path,
                             settings["sampling"]["fps"],
@@ -503,6 +504,9 @@ def ingest_detected(
                             end=end,
                             dimensions=dimensions,
                             http_headers=headers,
+                            bounded_requests=acquisition["bounded_requests"],
+                            request_size_bytes=acquisition["request_size_bytes"],
+                            persistent_connections=acquisition["persistent_connections"],
                         )
                     pending, pending_bytes, first_time, seen = [], 0, None, 0
                     with frame_iterator(source) as frames:

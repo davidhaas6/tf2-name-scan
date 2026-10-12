@@ -1,5 +1,6 @@
 """Bounded-memory FFmpeg sampling with checked process completion."""
 
+import functools
 import json
 import math
 import subprocess
@@ -9,6 +10,23 @@ from contextlib import contextmanager
 from PIL import Image
 
 from .contracts import Frame
+
+BOUNDED_ACQUISITION_ERROR = (
+    "FFmpeg 9+ with the http request_size option is required for bounded streaming "
+    "acquisition"
+)
+
+
+@functools.lru_cache(maxsize=1)
+def bounded_request_supported():
+    """Probe the installed FFmpeg for the http `request_size` option (cached)."""
+    result = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-h", "protocol=http"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return "request_size" in f"{result.stdout}\n{result.stderr}"
 
 
 @contextmanager
@@ -68,11 +86,20 @@ def sample_frames(
     end=None,
     dimensions=None,
     http_headers=None,
+    bounded_requests=False,
+    request_size_bytes=10485760,
+    persistent_connections=True,
 ):
     if not math.isfinite(fps) or not math.isfinite(start) or fps <= 0 or start < 0:
         raise ValueError("fps must be positive and start nonnegative")
     if isinstance(max_height, bool) or not isinstance(max_height, int) or max_height <= 0:
         raise ValueError("max_height must be a positive integer")
+    if (
+        isinstance(request_size_bytes, bool)
+        or not isinstance(request_size_bytes, int)
+        or request_size_bytes <= 0
+    ):
+        raise ValueError("request_size_bytes must be a positive integer")
     if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
         raise ValueError("limit must be a positive integer")
     if end is not None and (not math.isfinite(end) or end <= start):
@@ -83,16 +110,25 @@ def sample_frames(
         raise ValueError("Invalid video dimensions")
     height = min(source_height, max_height)
     width = max(1, round(source_width * height / source_height))
+    remote = str(path).startswith(("http:", "https:"))
+    if remote and bounded_requests and not bounded_request_supported():
+        raise RuntimeError(BOUNDED_ACQUISITION_ERROR)
     command = [
         "ffmpeg",
         "-nostdin",
         "-v",
         "error",
         "-noautorotate",
-        *(["-rw_timeout", "30000000"] if str(path).startswith(("http:", "https:")) else []),
+        *(["-rw_timeout", "30000000"] if remote else []),
         *(
             ["-headers", "".join(f"{key}: {value}\r\n" for key, value in http_headers.items())]
             if http_headers
+            else []
+        ),
+        *(["-request_size", str(request_size_bytes)] if remote and bounded_requests else []),
+        *(
+            ["-multiple_requests", "1"]
+            if remote and bounded_requests and persistent_connections
             else []
         ),
         "-ss",
