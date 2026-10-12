@@ -6,17 +6,20 @@ occurrence truth at no annotation cost, and R12's first slice — a presence
 battery — is recorded in [demo-window validation](demo-window-validation.md).
 R13 adds occurrence-level recall and the ship check. The manually labeled,
 real-video manifest and crop harness described below are deferred until after
-the MVP ships; they remain the accuracy evaluation for real compressed VODs.
+the MVP ships ([ticket 8](../tickets/08-manual-real-video-validation.md)); they
+remain the accuracy evaluation for real compressed VODs.
 
 For a fresh-corpus production scan baseline with retained timings and optional
 local-versus-stream comparison, see [scan benchmark](scan-benchmark.md).
 That small wrapper measures throughput and sample coverage; it does not replace
 the labelled accuracy evaluation below.
 
-Use the HLD's demo-parser/SourceDemoRender process for demo-derived samples and
-manually verified real-video crops. The old `killfeed-search/test-data` directory
-contains useful candidate images and video, but its OCR output is not verified
-ground truth. No labels are inferred automatically from those filenames.
+The demo parser and SVR renderer are now in the repo for the demo-derived path;
+this page's manifest and crop harness instead target the deferred manual
+real-video set, using manually verified real-video crops. The old
+`killfeed-search/test-data` directory contains useful candidate images and video,
+but its OCR output is not verified ground truth. No labels are inferred
+automatically from those filenames.
 
 Each JSONL record names an image relative to its manifest:
 

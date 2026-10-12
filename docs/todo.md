@@ -3,7 +3,7 @@
 This is a lightweight task tracker for the next practical checks, not a complete implementation plan.
 
 - [x] **Separate scanning from searching.** `scan` reports ingestion totals without querying or exporting; `query` reuses saved OCR. Evidence retention is independent of configured names and aliases.
-- [ ] **Complete the current GPU optimization tickets.** Scoped work is in the root [tickets folder](../tickets/); use current GPU profiles rather than the historical CPU priorities. See [ingestion readiness](ingestion-readiness.md).
+- [ ] **Complete the current optimization tickets.** Scoped work is in the root [tickets folder](../tickets/); these come from current GPU profiles rather than the historical CPU priorities. See [ingestion readiness](ingestion-readiness.md).
 
 Recommended implementation order: **reference indexes → simple scan benchmark with history/cache → acquisition/decode attribution → bounded HTTP acquisition → bounded startup recovery → GPU batching**. Ticket 6 is a prerequisite for ticket 1. Attribution selected [ticket 7](../tickets/07-bounded-http-acquisition.md); early region cropping (ticket 5) does not address the upstream delay. GPU batching remains a later experiment, without a new ticket in this set.
 

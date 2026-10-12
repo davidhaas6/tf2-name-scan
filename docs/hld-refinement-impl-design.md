@@ -6,13 +6,13 @@ Implementation baseline: `90f842e`; repository HEAD at audit: `605a562`.
 Design changes: `666bc0a` (adaptive detection and lineage) and `605a562` (streaming MVP refinements).  
 Authority: [high-level-design.md](high-level-design.md), as of `605a562`.
 
-The audit, proposed work packages and milestone counts below preserve their original dates. For current performance and validation status, see [refinement progress](refinement-progress.md#2026-09-28-performance-follow-up) and [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28). The latest local check has 126 passing tests and Ruff passing. The 11-second top-right clip measured RTF 1.396 with model setup excluded; four later online scans recorded RTF 0.682–0.836, with one source-duration discrepancy still open.
+The audit, proposed work packages and milestone counts below preserve their original dates. For current performance and validation status, see [refinement progress](refinement-progress.md#2026-09-28-performance-follow-up) and [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28). The latest local check has 126 passing tests and Ruff passing. The 11-second top-right clip measured RTF 1.396 with model setup excluded; four later online scans recorded RTF 0.682–0.836; the one source-duration discrepancy was resolved on 2026-10-01 by reprocessing the affected video to scan 33 ([ingestion readiness](ingestion-readiness.md)).
 
 ## 1. Purpose and original audit conclusions
 
-This document scopes the work needed to bring the implementation into agreement with the current HLD. The audit findings in this section and the ?Current implementation? column in ?2 describe the original `605a562` baseline, not the current code. See ?11 for completed work and the remaining delivery sequence, and [refinement-progress.md](refinement-progress.md) for implementation details and validation results.
+This document scopes the work needed to bring the implementation into agreement with the current HLD. The audit findings in this section and the "Current implementation" column in §2 describe the original `605a562` baseline, not the current code. See §11 for completed work and the remaining delivery sequence, and [refinement-progress.md](refinement-progress.md) for implementation details and validation results.
 
-The original audit follows. It is based on inspection of `src/tf2scan/`, all five test modules, configuration, packaging, and the usage/evaluation documentation, alongside the three design revisions. It is a source audit, not a certification of the original implementation or a real-model benchmark. Tests and model inference were not run during that original audit; subsequent implementation validation is recorded in ?11.
+The original audit follows. It is based on inspection of `src/tf2scan/`, all five test modules, configuration, packaging, and the usage/evaluation documentation, alongside the three design revisions. It is a source audit, not a certification of the original implementation or a real-model benchmark. Tests and model inference were not run during that original audit; subsequent implementation validation is recorded in §11.
 
 At the audit baseline, the implementation was a whole-video, fixed-HUD-row pipeline. `cli.execute()` instantiates `OpenOCRRecognizer`, downloads a complete video, and calls `ingest()`. Ingestion slices profile-defined rows, recognizes them, and commits one transaction for the entire video. Reprocessing deletes and replaces the previous corpus. The benchmark accepts already-cropped images and cannot measure detector or production clustering failures.
 
@@ -232,7 +232,7 @@ Current accuracy evidence comes from the demo event stream, at no annotation cos
 
 The manually labeled real-video set described below is deferred until after the MVP ships. Build it from three roughly ten-minute real VODs with varied HUDs, resolutions, compression and backgrounds, annotating visible killfeed username occurrences plus negative regions (visible intervals, polygons, exact transcription, source and stable occurrence IDs), including shifted/expired notices, dense activity and lookalike names. The old `~/Documents/Projects/killfeed-search` test data can supply candidates; neither filenames nor old OCR output are ground truth. Do not fabricate labels or declare accuracy gates met from fake-detector tests.
 
-Version the manifest and validate frame timestamps, dimensions, polygons, source grouping, exact text when CER is requested, and annotated-window duration. A single frame can contain several regions and several name occurrences: define explicit region/occurrence associations rather than assuming the HLD example's one `occurrence_id` applies to every box. Support zero-positive frames and distinguish unlabelled text from verified negatives. Reject source leakage across splits and inconsistent source durations. Adjacent frames of one occurrence stay grouped.
+For the deferred set, version the manifest and validate frame timestamps, dimensions, polygons, source grouping, exact text when CER is requested, and annotated-window duration. A single frame can contain several regions and several name occurrences: define explicit region/occurrence associations rather than assuming the HLD example's one `occurrence_id` applies to every box. Support zero-positive frames and distinguish unlabelled text from verified negatives. Reject source leakage across splits and inconsistent source durations. Adjacent frames of one occurrence stay grouped.
 
 Keep a crop-only recognition mode for controlled model comparisons, but introduce frame/sequence and video-window modes that exercise the production detector, retention, tracker and matcher. Legacy crop manifests may be explicitly recognized as a different schema/mode; they cannot certify end-to-end performance.
 
@@ -285,7 +285,7 @@ Preserve the intent of query-without-OCR, rematching without corpus mutation, re
 
 Add focused tests for geometry encoding/crop transforms, retention counters, configuration hashing, legacy migration, duplicate/reordered detection association, crash recovery, boundary merging and evidence compaction. Use real FFmpeg local fixtures for media timing; gate model/network integration tests explicitly on their required environment. Test source failure, early EOF, cancellation and subprocess cleanup rather than relying only on success-path mocks.
 
-When implementing, run `uv run pytest` and `uv run ruff check src tests` plus the relevant real-model/media smoke tests available in the environment. Record skipped integration checks and benchmark evidence separately. Run these checks for each remaining delivery commit. Completed milestone results are recorded in ?11; they are separate from real-model evaluation.
+When implementing, run `uv run pytest` and `uv run ruff check src tests` plus the relevant real-model/media smoke tests available in the environment. Record skipped integration checks and benchmark evidence separately. Run these checks for each remaining delivery commit. Completed milestone results are recorded in §11; they are separate from real-model evaluation.
 
 ## 11. Delivery sequence and completion boundaries
 
@@ -324,13 +324,13 @@ Each remaining delivery group includes supporting documentation and passes `uv r
 
 ### V1 completion and excluded follow-up work
 
-Completion means all **R01?R14** deliverables and acceptance checks are implemented, old databases remain usable, new scans follow the HLD pipeline, interrupted scans recover correctly, and an evaluation report from the demo-derived occurrence set exists. Accuracy/performance targets may remain unproven or unmet; report the measurements and uncertainty explicitly. Architecture completion and passing product gates are separate claims.
+Completion means all **R01–R14** deliverables and acceptance checks are implemented, old databases remain usable, new scans follow the HLD pipeline, interrupted scans recover correctly, and an evaluation report from the demo-derived occurrence set exists. Accuracy/performance targets may remain unproven or unmet; report the measurements and uncertainty explicitly. Architecture completion and passing product gates are separate claims.
 
-**R15 is outside this completion push.** Defer tiny-detector/SVTRv2 comparisons and ONNX export until the Paddle V1 is reliable and evaluated. Fine-tuning, VLM recovery, demo parsing/rendering and other ?12 backlog items also remain deferred. None is a prerequisite for finishing this V1 effort.
+**R15 is outside this completion push.** Defer tiny-detector/SVTRv2 comparisons and ONNX export until the Paddle V1 is reliable and evaluated. Fine-tuning, VLM recovery and other §12 backlog items also remain deferred. None is a prerequisite for finishing this V1 effort.
 
 ## 12. Deferred work and decisions to verify during implementation
 
-The following remain deferred by the HLD: demo parsing/SourceDemoRender automation until useful for controlled variation; OCR VLM recovery; detector/recognizer fine-tuning; full HUD semantic classification; text-aware change detection; public search/API/server; distributed scanning; general YouTube crawling; multilingual expansion and large-scale policy/bandwidth planning. Preserve extensibility and provenance without implementing these systems as part of this refinement.
+The following remain deferred by the HLD: OCR VLM recovery; detector/recognizer fine-tuning; full HUD semantic classification; text-aware change detection; public search/API/server; distributed scanning; general YouTube crawling; multilingual expansion and large-scale policy/bandwidth planning. Demo parsing and rendering are now implemented for the MVP evaluation path (`lib/tf-demo-parser`, `lib/svr`); fuller demo labeling for controlled variation remains deferred. Preserve extensibility and provenance without implementing these systems as part of this refinement.
 
 Specific uncertainties to resolve with evidence, without blocking unrelated work:
 
@@ -339,7 +339,7 @@ Specific uncertainties to resolve with evidence, without blocking unrelated work
 | Exact Paddle packages, model artifacts and CPU/GPU support | R04 resolved for Windows x64 CPU: packages, model hashes and real-model smoke tests are recorded in [local scanner validation](local-scanner-validation.md). GPU support remains unvalidated. |
 | yt-dlp section behavior, source PTS and raw frame dimensions | R06/R07 implemented with local media and deterministic mocked remote tests; live remote/model integration remains environment-dependent. |
 | Replay identity under detector jitter and range overhang | R07 has deterministic sample ownership and retry/recovery coverage; retain geometry tolerance checks during end-to-end evaluation. |
-| Motion, confidence floor, padding and detector thresholds | R05/R08/R13: initial documented defaults, tune on source-separated labelled data |
+| Motion, confidence floor, padding and detector thresholds | R05/R08: initial documented defaults, tune on the post-MVP source-separated labeled set ([ticket 8](../tickets/08-manual-real-video-validation.md)) |
 | Ambiguous legacy representative evidence | R02/R10: preserve marked unknowns and legacy paths; no fabricated per-observation provenance |
 | Evidence requested by arbitrary later aliases | R10: retain/show truthful cluster representatives; observation-specific recapture is separate from SQLite-only query |
 | Statistical confidence from three VODs | Post-MVP labeled set: publish source coverage and intervals; expand labels before claiming gates established |

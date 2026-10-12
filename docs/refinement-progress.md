@@ -1,6 +1,6 @@
 # Refinement implementation
 
-## 2026-10-01 operational audit
+## 2026-10-01 operational audit and 2026-10-12 evaluation update
 
 The current local configuration uses GPU detection and recognition. Nine online
 videos over ten minutes have completed with complete 1-fps sample grids across
@@ -52,7 +52,7 @@ Routine evidence compaction now considers only clusters changed by a batch and p
 
 On `input/uw1.mp4` at 1 sampled frame/second in the top-right region, the short local profile processed 11 frames and 107 crops in 16.031 scan-wall seconds for 11.486 seconds of video (RTF 1.396). That excludes 4.880 seconds of model setup and includes 4.200 seconds of startup orphan recovery. Without startup recovery, the measured scan work was 11.831 seconds (about 1.03× real time). Batch compaction took 0.104 seconds across three commits, down from 11.965 seconds in the original detailed profile.
 
-Four later online scans of 148–477 catalog seconds each recorded RTF 0.682–0.836 using per-video database timestamps. Three had the expected 1-fps frame count; the 477-second entry had only 455 frames and requires source-duration verification. See [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28) for the measurements and limits. These runs demonstrate faster-than-real-time recorded processing for the longer clips, while repeatability, complete source coverage for one clip, and player-name accuracy remain unverified.
+Four later online scans of 148–477 catalog seconds each recorded RTF 0.682–0.836 using per-video database timestamps. Three had the expected 1-fps frame count; the 477-second entry had only 455 frames; it was reprocessed to a complete generation on 2026-10-01 (see [ingestion readiness](ingestion-readiness.md)). See [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28) for the measurements and limits. These runs demonstrate faster-than-real-time recorded processing for the longer clips, while repeatability, complete source coverage for one clip, and player-name accuracy remain unverified.
 
 ## R09–R11 — query, evidence and report transition
 
@@ -118,7 +118,7 @@ coverage; full pytest and Ruff results are recorded in the requirement commit.
 R01 validation result: 31 tests passed; Ruff passed. Real model setup is deferred to R04.
 
 
-## R02 ? immutable lineage and migration
+## R02 — immutable lineage and migration
 
 Migration v3 leaves migrations v1/v2 unchanged and retains their corpus tables as
 `legacy_*` audit records. Before upgrading an existing database, SQLite's backup
@@ -163,7 +163,7 @@ resume mismatch, geometry encoding, duplicate identities and cross-scan rejectio
 R02 validation result: 37 tests passed; Ruff passed, including the real FFmpeg fixture.
 
 
-## R03 ? full-frame detection and rectified crops
+## R03 — full-frame detection and rectified crops
 
 `TextDetector.detect(list[Frame])` returns one ordered detection list per input
 frame, with unique detection identities within each frame and source-coordinate

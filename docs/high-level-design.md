@@ -408,7 +408,7 @@ Use a small JSONL manifest so every model sees exactly the same data:
 }
 ```
 
-This manual set is sufficient to choose the V1 recognizer and tune thresholds. It is not by itself enough to establish product gates with high confidence; report grouped confidence intervals and expand the set when a gate is close.
+When built, this manual set is sufficient to choose the V1 recognizer and tune thresholds. It is not by itself enough to establish product gates with high confidence; report grouped confidence intervals and expand the set when a gate is close.
 
 ### 6.3 Demo-rendered set (current MVP path)
 

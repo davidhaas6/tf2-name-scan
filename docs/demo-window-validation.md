@@ -1,9 +1,9 @@
-# Demo-window ground-truth validation (first slice of R12/R13)
+# Demo-window ground-truth validation (R12 demo-derived first slice)
 
 Status: **implemented and measured (2026-10-12).** Plan below; results in the
 [Results](#results) section.
 
-This is a deliberately minimal slice of R12/R13: compare an unordered set of
+This is a deliberately minimal slice of R12: compare an unordered set of
 names the local pipeline reports against an unordered set of ground-truth names
 from a demo, for one short window. It answers one question only: *does the
 pipeline find every player who got a kill or died on the server during this

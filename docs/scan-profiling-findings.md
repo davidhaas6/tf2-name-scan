@@ -165,4 +165,5 @@ confidence) exactly matches run 2:
 `e26ac4d06aeee46a3991475d7f024b9bf839e86ba145ba685bb5ebfa9c5a5f78`.
 No representatives are missing and SQLite reports no foreign-key violations.
 These checks establish coverage and output preservation for this replay, not
-manually labelled username recall.
+manually labelled username recall, which is deferred post-MVP
+([ticket 8](../tickets/08-manual-real-video-validation.md)).
