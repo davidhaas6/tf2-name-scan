@@ -377,6 +377,8 @@ The real-video set does not need to contain the user's actual name. Label the vi
 
 ### 6.2 Manual annotation set (deferred post-MVP)
 
+Tracked as [ticket 8](../tickets/08-manual-real-video-validation.md).
+
 1. Select three roughly 10-minute VODs with different HUD layouts, resolutions, motion backgrounds, and compression artifacts.
 2. Sample them with the same frame policy as the scanner, then manually label about 100 visible killfeed username occurrences. For each occurrence, record the text polygon, exact visible transcription, source video, and visible time span.
 3. Label enough sampled negative regions to measure false detections and false candidate hits, including non-name HUD text near the killfeed.

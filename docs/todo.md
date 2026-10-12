@@ -34,7 +34,7 @@ Recommended implementation order: **reference indexes → simple scan benchmark 
 
 - [ ] **R13: Ship check on the >=95% occurrence-recall gate.** Measure occurrence recall with the parser as truth; recall below ~95% is a no-ship signal. Add 1–2 more demo windows for coverage before shipping. Report counts, not intervals, and state the gate is not statistically established at this sample size; the 1 fps / top-right / 720p caveats and killfeed-versus-event divergences apply.
 
-- [ ] **Post-MVP (deferred): labeled real-video recall.** Reopen only when accuracy is doubted or a threshold/model change needs a real-input regression check; deliberately not built before the MVP ships.
+- [ ] **Post-MVP (deferred): labeled real-video recall.** Reopen only when accuracy is doubted or a threshold/model change needs a real-input regression check; deliberately not built before the MVP ships. See [ticket 8](../tickets/08-manual-real-video-validation.md).
 
 - Trigger conditions, not scope: duplicate-hit counting, threshold tuning, and CER enter only when occurrence recall degrades or a threshold/model change needs regression detection.
 
