@@ -50,7 +50,7 @@ acquisition:
     overlap_s: 3,
     cache_ttl_s: 0,
     # Bounded HTTP requests require FFmpeg 9+; see docs/bounded-streaming.md.
-    bounded_requests: false,
+    bounded_requests: true,
     request_size_bytes: 10485760,
     persistent_connections: true,
   }

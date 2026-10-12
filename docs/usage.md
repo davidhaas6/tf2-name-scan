@@ -4,7 +4,11 @@ The app reads text from sampled TF2 video frames, groups repeated sightings of t
 
 ## Set up
 
-Install Python 3.10.11, [uv](https://docs.astral.sh/uv/), FFmpeg, and FFprobe. Make sure `ffmpeg` and `ffprobe` are on your `PATH`. From the project directory, run:
+Install Python 3.10.11, [uv](https://docs.astral.sh/uv/), and **FFmpeg 9+**
+(including FFprobe). Make sure `ffmpeg` and `ffprobe` are on your `PATH`.
+Bounded streaming acquisition uses FFmpeg 9's `http` `request_size` option and
+fails with a clear error when it is absent (see
+[bounded streaming](bounded-streaming.md)). From the project directory, run:
 
 ```powershell
 uv sync --extra paddle

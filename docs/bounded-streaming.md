@@ -182,6 +182,23 @@ absent, in which case `sample_frames` calls `probe()` and sends `ffprobe` to the
 remote URL without the bounded options. That path still uses unbounded requests
 and should be brought under the same acquisition policy later.
 
+## Outcome: default enabled (2026-10-12)
+
+Phase B met the acceptance gate, so `acquisition.bounded_requests` now defaults to
+`True` with `request_size_bytes: 10485760` and `persistent_connections: true`.
+FFmpeg **9.0+ is required**: the cached capability probe checks
+`ffmpeg -h protocol=http` for `request_size`, and a missing option raises
+`FFmpeg 9+ with the http request_size option is required for bounded streaming
+acquisition` rather than silently requesting unbounded data. Download-first
+remains the documented fallback for environments without FFmpeg 9.
+
+The new acquisition keys enter the effective-scan identity snapshot, so the scan
+hash changed with this release. Scans from before and after the flip are not
+equivalent work and must not be compared as such.
+
+Acquisition is the only behavior changed here: OCR, retention, matching,
+sampling, model/region and reporting defaults are untouched.
+
 ## Evidence
 
 Scratch probes retained locally under `output/` (gitignored): `ff9_probe.py`,

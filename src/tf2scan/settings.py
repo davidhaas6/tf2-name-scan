@@ -54,7 +54,7 @@ DEFAULTS = {
         "streams_per_host": 1,
         "overlap_s": 3,
         "cache_ttl_s": 0,
-        "bounded_requests": False,
+        "bounded_requests": True,
         "request_size_bytes": 10485760,  # 10 MiB
         "persistent_connections": True,
     },

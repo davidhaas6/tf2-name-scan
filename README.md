@@ -11,7 +11,10 @@ report provides timestamp links, evidence and review state.
 ## Install
 
 The current dependency configuration targets Windows x64 and Python 3.10.
-Install Git, uv, and FFmpeg (including FFprobe), with their commands on `PATH`.
+Install Git, uv, and **FFmpeg 9+** (including FFprobe), with their commands on
+`PATH`. Bounded streaming acquisition uses FFmpeg 9's `http` `request_size`
+option and fails with a clear error when it is missing (see
+[bounded streaming](docs/bounded-streaming.md)).
 YouTube scans also require Node.js 22 or newer on `PATH`. In PowerShell:
 
 ```powershell

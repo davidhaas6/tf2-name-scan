@@ -4,7 +4,9 @@
 isolates bounded versus continuous HTTP requests as the dominant cause of the
 local/remote gap. A fresh equivalent production pair takes 12.258/80.650 seconds;
 repeated same-URL transfers take about 2.7/76.3 seconds depending only on the
-request policy. Production settings remain unchanged.
+request policy. Bounded requests became the production default in ticket 7
+(2026-10-12), which requires FFmpeg 9+; see
+[bounded streaming](bounded-streaming.md).
 
 Run one fresh-corpus scan using the same detector, recognizer, ingestion path,
 acquisition policy and `ScanProfile` as `tf2scan scan --reprocess --perf-output`:

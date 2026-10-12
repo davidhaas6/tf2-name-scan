@@ -1,12 +1,12 @@
 # 7. Bound HTTP requests in streaming acquisition
 
-Status: open. Approach selected 2026-10-12: native FFmpeg 9 bounded-request
-options (`-request_size` + `-multiple_requests`), not a seekable reader. See
-[bounded streaming decision](../docs/bounded-streaming.md). Follow-up to
-[acquisition/decode attribution](01-acquisition-decode-attribution.md),
-which isolated unbounded HTTP requests as the dominant cause of the local/remote
-gap. See [acquisition attribution](../docs/acquisition-attribution.md).
-Production defaults are unchanged until this ticket delivers a measured win.
+Status: completed 2026-10-12. Approach selected 2026-10-12: native FFmpeg 9
+bounded-request options (`-request_size` + `-multiple_requests`), not a seekable
+reader. See [bounded streaming decision](../docs/bounded-streaming.md). Follow-up
+to [acquisition/decode attribution](01-acquisition-decode-attribution.md), which
+isolated unbounded HTTP requests as the dominant cause of the local/remote gap.
+See [acquisition attribution](../docs/acquisition-attribution.md). Phase B proved
+the end-to-end win and Phase C enabled bounded requests by default.
 
 ## Problem
 
@@ -52,3 +52,15 @@ streaming scan-wall gap to acquisition waiting.
 - Interruption/resume, chunk-boundary overlap, and short/early-EOF handling still
   pass. Report the win against the streaming gap and full scan time, not against
   isolated diagnostic frame-drain timings.
+
+## Outcome (2026-10-12)
+
+Completed. Three fresh-process/fresh-corpus `benchmark_scan.py compare` pairs
+with bounded requests enabled measured a remote scan wall of **16.857 s mean and
+RTF 0.114**, down from the recorded unbounded baseline of 80.650 s and RTF 0.545.
+Every pair reported `equivalent: true` with no warnings, complete 148-frame
+grids, matching grid/RGB/cache hashes, and the 132-test suite passed with the
+flag on. Persistent connections keep the production `-ss`/`-t` sections to one
+probe connection plus one reused media connection (2 total, 0 reconnections),
+independent of section start/length and request count. The default is now on;
+FFmpeg 9+ is required. Details: [bounded streaming decision](../docs/bounded-streaming.md).
