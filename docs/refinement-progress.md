@@ -12,13 +12,16 @@ evidence inventory, and the historical short scan investigation.
 Bounded FFmpeg sampling now rejects a successful process exit when output is
 more than one sample short of the requested section. The existing retry/resume
 path handles this error while preserving committed batches. Current validation:
-103 tests pass; Ruff passes. Name evaluation has a first slice: a demo-derived
-presence check on one 180 s SourceTV window found all 18 kill/death
+126 tests pass; Ruff passes. R12's demo-derived accuracy evidence is in place:
+a presence check on one 180 s SourceTV window found all 18 kill/death
 participants with zero missed names, and a negative battery measured the
 first false-candidate counts (clean realistic absent names; heavy
-short-name and near-duplicate collisions). This is an upper bound on clean
-input, not the labeled occurrence dataset R12/R13 still describe. See
-[demo-window validation](demo-window-validation.md). The CPU setup and
+short-name and near-duplicate collisions). After that spot checking and demo
+validation, R12/R13 were narrowed: correctness now comes from the demo event
+stream at no annotation cost, R13 adds occurrence-level recall plus a little
+more demo coverage before the ship check, and the manually labeled real-video
+set is deferred post-MVP. See [demo-window validation](demo-window-validation.md)
+and [the near-term tracker](todo.md). The CPU setup and
 earlier validation totals below are historical milestones.
 
 ## Current milestone: search, evidence and reports complete
@@ -33,14 +36,14 @@ reprocess preserves the previous completed scan. The R01–R03 notes below descr
 their historical boundaries; their references to missing Paddle construction,
 singleton clustering and gated detection CLI scans no longer describe current code.
 
-Current validation: 85 tests pass and Ruff passes for `src` and `tests`. A real Paddle scan
+Current validation: 126 tests pass and Ruff passes for `src` and `tests`. A real Paddle scan
 completed two six-second local chunks of `gameplay-smoke.mp4` during R06/R07 validation. The earlier local
 scanner validation recorded 69 tests and real Paddle inference on two 12-second
 excerpts; see [local scanner validation](local-scanner-validation.md) for model
 identities and inspected examples. R09–R11 add three-second query promotion,
-sparse evidence retention/cleanup, and lineage-aware reports/exports. R12–R14
-(labeled video evaluation, end-to-end metrics, and remaining CLI/documentation)
-follow. R15 model comparisons are deferred. Live remote/model integration remains
+sparse evidence retention/cleanup, and lineage-aware reports/exports. R12–R13
+(demo-derived occurrence recall and the ship check) and remaining R14
+CLI/documentation follow. R15 model comparisons are deferred. Live remote/model integration remains
 environment-dependent; the remote streaming path has deterministic mocked coverage.
 
 ## 2026-09-28 performance follow-up
@@ -68,8 +71,9 @@ a compatibility alias. Reports can select historical scans/runs explicitly. Vide
 deletion cascades through generations, preserves shared runs, and removes owned
 evidence only after the database delete commits.
 
-Validation: 80 tests pass and Ruff passes. Real-model accuracy remains an R12/R13
-evaluation task.
+Validation: 80 tests pass and Ruff passes. Real-model accuracy is evaluated in
+R12/R13 against the demo event stream; see
+[demo-window validation](demo-window-validation.md).
 
 YouTube indexing and stream resolution now enable Node.js through yt-dlp's Python
 API and install the matching EJS scripts via the `yt-dlp[default]` dependency.

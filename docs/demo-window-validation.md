@@ -7,7 +7,7 @@ This is a deliberately minimal slice of R12/R13: compare an unordered set of
 names the local pipeline reports against an unordered set of ground-truth names
 from a demo, for one short window. It answers one question only: *does the
 pipeline find every player who got a kill or died on the server during this
-window?* It is not the occurrence-level evaluation R12/R13 ultimately require.
+window?* R12 records it as the demo-derived accuracy evidence. R13 adds occurrence-level alignment of detections to kill timestamps and a little more demo coverage before the ship check; the manually labeled real-video set is deferred post-MVP.
 
 ## 1. Demo and time window
 
@@ -121,11 +121,11 @@ The pipeline emits text clusters, not player names, so P is defined as:
   primary result, ratios are reported but interpreted qualitatively. No
   interval estimates, and **no claim that any HLD gate (95 % occurrence
   recall, ≤ 0.5 false candidates/query-hour, …) is established**.
-- R12/R13 remain open tickets. This slice does not deliver: manually labeled
-  occurrence-level data, a second HUD/compression source, per-occurrence
-  alignment of detections to kill timestamps, full-row transcripts/CER,
-  threshold tuning, or model comparisons (R15). `docs/todo.md` is updated to
-  record this first slice and what remains.
+- R12 is complete on this demo-derived set. R13 still needs occurrence-level
+  alignment of detections to kill timestamps and a little more demo coverage
+  before the ship check; full-row transcripts/CER, threshold tuning, model
+  comparisons (R15), and the manually labeled real-video set (post-MVP) remain
+  deferred. `docs/todo.md` records the current scope.
 
 ## 6. What this design can and cannot detect
 
@@ -321,5 +321,6 @@ HLD workload gate is established by them.
 - Discovery-form P and per-candidate false rates / reviewer workload
   (false candidates per query-hour) — presence form only was measured.
 - Any second HUD/compression source, multi-VOD splits, threshold tuning and
-  model comparisons (R15) — R12's manual occurrence labeling and negative
-  regions remain open, as does a real compressed-VOD window.
+  model comparisons (R15) — the manually labeled real-video set, including a real
+  compressed-VOD window, is deferred post-MVP; R13 covers occurrence-level
+  alignment on the demo-derived set.

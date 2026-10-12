@@ -107,7 +107,7 @@ If a compatible GPU is available, measure the same models there after verifying 
 
 ## 5. Reduce repeated OCR work, with a coverage check
 
-**Status: open beyond region selection.** Full-frame and top-right detection modes are implemented and were timed, but no exact or approximate OCR reuse, periodic full-frame policy, or sampling/resolution accuracy sweep has been completed. The verified occurrence set needed to judge coverage is still open under R12/R13 in [todo](todo.md).
+**Status: open beyond region selection.** Full-frame and top-right detection modes are implemented and were timed, but no exact or approximate OCR reuse, periodic full-frame policy, or sampling/resolution accuracy sweep has been completed. The demo-derived occurrence set in R12/R13 can judge coverage; the verified real-video set is deferred post-MVP ([todo](todo.md)).
 
 The tracker associates observations after recognition, so repeated visible text currently still incurs OCR. Explore these options in increasing order of behavioral change:
 
@@ -116,7 +116,7 @@ The tracker associates observations after recognition, so repeated visible text 
 3. **Use frequent ROI detection plus periodic full-frame detection**, evaluating names in killfeed, chat, scoreboard and spectator UI. Top-right-only scanning already reduces work substantially but excludes other regions. Maintain target-independent retention.
 4. **Sweep sampling rate or working resolution** only against verified occurrence labels. Lower sampling can miss brief appearances; lower resolution can erase small glyphs. Try 0.5/1/2 fps and a small resolution sweep separately, reporting speed together with occurrence recall and false candidates.
 
-The small verified set in R12/R13 should run alongside these experiments. Exact-output comparisons help for implementation-only changes; any cropping, sampling, approximate caching or model change needs occurrence-level accuracy evaluation. Retain examples of misses, not just aggregate scores.
+The demo-derived occurrence set in R12/R13 should run alongside these experiments; the labeled real-video set is post-MVP. Exact-output comparisons help for implementation-only changes; any cropping, sampling, approximate caching or model change needs occurrence-level accuracy evaluation. Retain examples of misses, not just aggregate scores.
 
 ## Recommended order
 

@@ -1,10 +1,12 @@
 # Building and measuring the evaluation set
 
-A first minimal slice exists: demo-derived ground truth and a presence
-(name-set) comparison on one clean SourceTV window, plus a negative-query
-battery, are recorded in [demo-window validation](demo-window-validation.md).
-It is an upper bound on easy input; the labeled occurrence dataset this page
-describes remains the accuracy evaluation.
+Current accuracy evidence is demo-derived: the demo event stream supplies
+occurrence truth at no annotation cost, and R12's first slice — a presence
+(name-set) comparison on one clean SourceTV window plus a negative-query
+battery — is recorded in [demo-window validation](demo-window-validation.md).
+R13 adds occurrence-level recall and the ship check. The manually labeled,
+real-video manifest and crop harness described below are deferred until after
+the MVP ships; they remain the accuracy evaluation for real compressed VODs.
 
 For a fresh-corpus production scan baseline with retained timings and optional
 local-versus-stream comparison, see [scan benchmark](scan-benchmark.md).

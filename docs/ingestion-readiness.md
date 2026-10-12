@@ -73,7 +73,7 @@ injected fixture sources retain their existing behavior.
 Validation: a real short local file fails its scan, preserves committed frames,
 and resumes to complete unique coverage after the source is restored. Clean
 decoder exits with materially short output fail; complete output and one-sample
-EOF rounding pass. The full suite passes: 103 tests, with Ruff passing.
+EOF rounding pass. The current full suite passes: 126 tests, with Ruff passing.
 
 The video was reprocessed on 2026-10-01 with the current GPU configuration and
 the coverage guard. The new selected generation is scan 33: all 477 unique

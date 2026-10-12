@@ -1,12 +1,12 @@
 # HLD refinement: implementation design and scope
 
-Status: R01–R11 core implemented through lineage-aware search, sparse evidence and reports; R12–R13 and remaining R14 work are next. Performance follow-up updated 2026-09-28.
+Status: R01–R11 core implemented through lineage-aware search, sparse evidence and reports; R12 is complete on the demo-derived set, and R13 (occurrence recall and the ship check) plus remaining R14 work are next. Performance follow-up updated 2026-09-28; evaluation scope updated 2026-10-12.
 Audit date: 2026-09-22.  
 Implementation baseline: `90f842e`; repository HEAD at audit: `605a562`.  
 Design changes: `666bc0a` (adaptive detection and lineage) and `605a562` (streaming MVP refinements).  
 Authority: [high-level-design.md](high-level-design.md), as of `605a562`.
 
-The audit, proposed work packages and milestone counts below preserve their original dates. For current performance and validation status, see [refinement progress](refinement-progress.md#2026-09-28-performance-follow-up) and [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28). The latest local check has 85 passing tests and Ruff passing. The 11-second top-right clip measured RTF 1.396 with model setup excluded; four later online scans recorded RTF 0.682–0.836, with one source-duration discrepancy still open.
+The audit, proposed work packages and milestone counts below preserve their original dates. For current performance and validation status, see [refinement progress](refinement-progress.md#2026-09-28-performance-follow-up) and [scan profiling findings](scan-profiling-findings.md#longer-online-scans-in-the-saved-corpus-2026-09-28). The latest local check has 126 passing tests and Ruff passing. The 11-second top-right clip measured RTF 1.396 with model setup excluded; four later online scans recorded RTF 0.682–0.836, with one source-duration discrepancy still open.
 
 ## 1. Purpose and original audit conclusions
 
@@ -46,8 +46,8 @@ Size expresses relative complexity, not elapsed-time estimates: S = localized ch
 | R09 | 3-second promotion and lineage-aware queries; §3.6 (`605`), §4 (`666`) | `promoted(gap=8)` and row-cluster SQL | `matching.py`, `query.py` | M | R02, R08 |
 | R10 | Accurate sparse evidence and cleanup; §§3.4, 4 (`666`, `605`) | All observations point at a mutable cluster representative | `ingestion.py`, `storage.py`, evidence lifecycle | L | R02, R07, R08 |
 | R11 | Text-cluster reports and exports; §§4–5 (`666`) | `rows.jsonl`, row/HUD lineage and evidence joins | `report.py`, CLI export options | M | R09, R10 |
-| R12 | Manual real-video dataset and manifest; §§6.1–6.3 (`605`) | Empty manifest; docs prioritize demo crops | `eval/`, `docs/evaluation.md`, manifest validation | M + annotation | R03 contracts |
-| R13 | Detector/end-to-end evaluation, uncertainty, telemetry; §6.4 (`666`, `605`) | Crop-only point estimates and Python-heap timing | `benchmark.py`, `eval/run_benchmark.py`, instrumentation | L | R05, R07–R09, R12 |
+| R12 | Demo-derived occurrence ground truth; manual real-video manifest deferred post-MVP; §§6.1–6.3 (`605`) | Demo event stream supplies occurrence labels; first presence slice complete | `eval/r12_demo_validation/`, `docs/demo-window-validation.md` | M (no annotation) | R03 contracts |
+| R13 | Occurrence recall vs the demo event stream, end-to-end evaluation, ship check; §6.4 (`666`, `605`) | Name-level presence measured; occurrence alignment pending | `benchmark.py`, `eval/run_benchmark.py`, instrumentation | L | R05, R07–R09, R12 |
 | R14 | CLI, user documentation, regression transition; §§5, 10 (`666`, `605`) | Calibration/profile commands and replacement semantics | `cli.py`, README, usage/evaluation docs, tests | M | All V1 packages |
 | R15 | Benchmark-gated model/runtime comparisons; §§3.5, 6.4, 10 (`605`) | OpenOCR adapter available, no detector comparisons or ONNX backend | Optional adapters and benchmark configurations | M–L | R13 |
 
@@ -226,11 +226,11 @@ Compaction primarily reduces evidence duplication and searchable cluster entries
 
 ## 9. Evaluation data and measurement (R12–R13)
 
-### Manual dataset and manifest
+### Accuracy evidence: demo-derived now, labeled real video post-MVP
 
-Create the first evaluation set from three roughly ten-minute real VODs with varied HUDs, resolutions, compression and backgrounds, manually annotating about 100 visible killfeed username occurrences plus negative regions. Record visible intervals, polygons, exact transcription, source and stable occurrence IDs. Include shifted/expired notices, dense activity and lookalike names. Supplemental full-frame examples outside the killfeed should verify the expanded detection scope.
+Current accuracy evidence comes from the demo event stream, at no annotation cost. A vendored demo parser supplies occurrence truth — each player death gives a killer/victim name and kill time — and the production query path is checked against it. The first slice (one 180 s SourceTV window) is recorded in [demo-window validation](demo-window-validation.md). R13 measures occurrence-level recall against the 95% gate, adds a little more demo coverage, and decides ship/no-ship.
 
-The checked-in manifest is currently empty. Data selection, media availability and manual verification are real deliverables with effort separate from writing the harness. The old `~/Documents/Projects/killfeed-search` test data can supply candidates; neither filenames nor old OCR output are ground truth. Do not fabricate labels or declare accuracy gates met from fake-detector tests. No demo parser/render automation is needed for the first dataset.
+The manually labeled real-video set described below is deferred until after the MVP ships. Build it from three roughly ten-minute real VODs with varied HUDs, resolutions, compression and backgrounds, annotating visible killfeed username occurrences plus negative regions (visible intervals, polygons, exact transcription, source and stable occurrence IDs), including shifted/expired notices, dense activity and lookalike names. The old `~/Documents/Projects/killfeed-search` test data can supply candidates; neither filenames nor old OCR output are ground truth. Do not fabricate labels or declare accuracy gates met from fake-detector tests.
 
 Version the manifest and validate frame timestamps, dimensions, polygons, source grouping, exact text when CER is requested, and annotated-window duration. A single frame can contain several regions and several name occurrences: define explicit region/occurrence associations rather than assuming the HLD example's one `occurrence_id` applies to every box. Support zero-positive frames and distinguish unlabelled text from verified negatives. Reject source leakage across splits and inconsistent source durations. Adjacent frames of one occurrence stay grouped.
 
@@ -301,7 +301,7 @@ When implementing, run `uv run pytest` and `uv run ruff check src tests` plus th
 
 At the R11 milestone, **80 tests passed** and Ruff passed for `src` and `tests`. A real Paddle scan completed two six-second local chunks of `gameplay-smoke.mp4` (12 sampled frames, 86 observations, 67 clusters) during R06/R07 validation; R09–R11 have deterministic tests but no new real-video accuracy measurement. Node-backed indexing of two configured YouTube URLs and video-only stream resolution for `ZiZmodw-yRc` succeeded, but a full remote OCR scan has not been measured. The earlier R01–R03 foundation passed 52 tests, including real FFmpeg fixtures. Original v1/v2 migration definitions and `high-level-design.md` remain unchanged. These results establish implementation behavior, not measured production accuracy or throughput. See [refinement-progress.md](refinement-progress.md) for details.
 
-The current scanner runs the Paddle models, filters and clusters detected text, commits bounded chunks incrementally, and resumes completed chunks. R09–R11 use three-second query promotion, compact evidence, and export lineage-aware hits and text clusters. Labeled video evaluation, end-to-end metrics, and remaining CLI/documentation work remain R12–R14. R15 model comparisons are deferred.
+The current scanner runs the Paddle models, filters and clusters detected text, commits bounded chunks incrementally, and resumes completed chunks. R09–R11 use three-second query promotion, compact evidence, and export lineage-aware hits and text clusters. Demo-derived occurrence evaluation, end-to-end metrics, and remaining CLI/documentation work remain R12–R14. R15 model comparisons are deferred.
 
 ### Remaining delivery sequence
 
@@ -312,18 +312,19 @@ The first three delivery groups below are complete at their stated core scope. T
 | 1. Working local scanner — complete | **R04 + R05 + R08 core**, plus local CLI wiring from R14: Paddle detector/recognizer, deterministic proposal filtering/deduplication/caps, useful-text retention and counters, geometry/motion temporal clustering | Real local clips produced clustered text and evidence with the specified models. Deterministic tests cover filtering, accounting and temporal/motion boundaries; model/runtime versions and weight hashes are recorded. |
 | 2. Streaming and recovery — complete | **R06 + R07**, R08 persistence/restoration and evidence consistency needed for safe recovery: bounded acquisition, chunk/sample ownership, incremental commits, retries/backoff, overlap deduplication and tracker restoration | A real Paddle scan completed two bounded local chunks; deterministic tests cover resume and remote acquisition. Live remote/model integration remains to be validated in an environment with network access. |
 | 3. Complete search and review — core complete | **R09 + R10 + R11**, with remaining R14 CLI/documentation polish: three-second promotion, truthful representative evidence, retention/cleanup, lineage-aware reports and exports | Scan → query → report → review works. Historical reviews survive reprocessing, new clusters do not inherit reviews, nullable evidence is truthful, and SQLite-only rematching needs no inference dependencies. |
-| 4. Evaluation and release readiness | **R12 + R13 + remaining R14**: annotated real-video fixtures, production-pipeline evaluation, uncertainty/performance reporting, CLI and documentation completion, regression coverage | Run the actual pipeline against labeled videos and report recall, false positives, reviewer workload, speed and remaining failures. Complete the CLI/migration documentation and all remaining V1 acceptance checks. |
+| 4. Evaluation and release readiness | **R12 + R13 + remaining R14**: demo-derived occurrence ground truth, production-pipeline recall evaluation, uncertainty/performance reporting, CLI and documentation completion, regression coverage | Run the actual pipeline against the demo event stream and report occurrence recall, false candidates, reviewer workload, speed and remaining failures. Complete the CLI/migration documentation and all remaining V1 acceptance checks. |
 
 Each remaining delivery group includes supporting documentation and passes `uv run pytest`, `uv run ruff check src tests`, and applicable real-model/media smoke tests before committing. These groups do not prescribe a fixed commit count or omit acceptance checks.
 
 ### Evaluation work for the next phase
 
-- Select the three roughly ten-minute VODs, establish source-separated splits, and annotate about 100 visible username occurrences plus negative regions for R12.
-- Use failures from the local smoke test and early labeled samples to drive fixes. Keep inference behavior, geometry and provenance consistent between scanning and evaluation.
+- Measure occurrence-level recall against the demo event stream for R12/R13, and add a little more demo coverage before the ship check.
+- Use failures from the demo evaluation and local smoke tests to drive fixes. Keep inference behavior, geometry and provenance consistent between scanning and evaluation.
+- The manually labeled real-video dataset is deferred post-MVP; see §9.
 
 ### V1 completion and excluded follow-up work
 
-Completion means all **R01?R14** deliverables and acceptance checks are implemented, old databases remain usable, new scans follow the HLD pipeline, interrupted scans recover correctly, and a real-data evaluation report exists. Accuracy/performance targets may remain unproven or unmet; report the measurements and uncertainty explicitly. Architecture completion and passing product gates are separate claims.
+Completion means all **R01?R14** deliverables and acceptance checks are implemented, old databases remain usable, new scans follow the HLD pipeline, interrupted scans recover correctly, and an evaluation report from the demo-derived occurrence set exists. Accuracy/performance targets may remain unproven or unmet; report the measurements and uncertainty explicitly. Architecture completion and passing product gates are separate claims.
 
 **R15 is outside this completion push.** Defer tiny-detector/SVTRv2 comparisons and ONNX export until the Paddle V1 is reliable and evaluated. Fine-tuning, VLM recovery, demo parsing/rendering and other ?12 backlog items also remain deferred. None is a prerequisite for finishing this V1 effort.
 
@@ -341,6 +342,6 @@ Specific uncertainties to resolve with evidence, without blocking unrelated work
 | Motion, confidence floor, padding and detector thresholds | R05/R08/R13: initial documented defaults, tune on source-separated labelled data |
 | Ambiguous legacy representative evidence | R02/R10: preserve marked unknowns and legacy paths; no fabricated per-observation provenance |
 | Evidence requested by arbitrary later aliases | R10: retain/show truthful cluster representatives; observation-specific recapture is separate from SQLite-only query |
-| Statistical confidence from three VODs | R12/R13: publish source coverage and intervals, expand labels before claiming gates established |
+| Statistical confidence from three VODs | Post-MVP labeled set: publish source coverage and intervals; expand labels before claiming gates established |
 
 The HLD's proposed ONNX boundary and alternative models are later measured deliverables. The V1 default remains PP-OCRv6-small detection and recognition in Paddle even though the existing OpenOCR adapter can be reused for comparisons.
