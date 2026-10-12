@@ -110,12 +110,86 @@ The cached AV1 video `tFwLwEcSTwc` (format 398) is no longer resolvable through
 yt-dlp, so AV1 comparison needs a fresh cache or should be deferred; the default
 `GCN-CzALyq0` comparison is unaffected.
 
+## Phase B: end-to-end scan benchmark (2026-10-12)
+
+With `acquisition.bounded_requests: true` (10 MiB `request_size_bytes`, persistent
+connections on) in the local config, three fresh-process/fresh-corpus comparisons
+were run, alternating after short pauses:
+
+```powershell
+uv --cache-dir .uv-cache run --no-sync python eval/benchmark_scan.py compare --label bounded-requests
+```
+
+`GCN-CzALyq0`, format 298, 148 s, unchanged sampling/detector/recognizer/GPU
+settings. The local arm is a matched control over the validated cache; only the
+stream arm acquires the resolved URL. Each pair reused the published cache
+(`cache download 0.000 s`).
+
+| Run | Local wall, s | Stream wall, s | Local RTF | Stream RTF | Stream−local, s | Stream decoding, s |
+|---|---:|---:|---:|---:|---:|---:|
+| `a24395ab` / `6a8c9cfb` | 11.941 | 16.833 | 0.081 | 0.114 | +4.892 | 5.172 |
+| `bd661779` / `109da731` | 12.174 | 16.907 | 0.082 | 0.114 | +4.733 | 5.217 |
+| `9337d88e` / `0bb7c90c` | 10.826 | 16.831 | 0.073 | 0.114 | +6.005 | 5.174 |
+| **Mean** | **11.647** | **16.857** | **0.079** | **0.114** | **+5.210** | **5.188** |
+
+Against the recorded unbounded production pair in
+[acquisition attribution](acquisition-attribution.md) (local 12.258 s / stream
+80.650 s, RTF 0.083 / 0.545), the remote scan wall fell from 80.650 s to a
+16.857 s mean and RTF from 0.545 to 0.114. The stream−local decoding gap fell
+from 65.184 s to about 4.35 s per run. The bounded stream arm is now within about
+1.45× the local control instead of about 6.6×.
+
+Verification for every run:
+
+- `comparison.json` reports `equivalent: true` with no warnings; `effective_scan`,
+  media and sample grids match between arms.
+- All three stream runs and the local arms have the same complete 148-frame grid
+  fingerprint as the recorded baseline: `4676878a0f2e4ab19f9675c7ddce1e95919912c21656c770ff1a16393a6998f1`.
+- A production-path drain of the cached file and of the resolved URL with
+  `sample_frames(..., bounded_requests=True, request_size_bytes=10485760,
+  persistent_connections=True)` both reproduce 148 frames, RGB SHA-256
+  `6d703bbf12f2dfd79c9ed41bf817fce91ad13fdfd208a31f10b6ddfc2c89e73e` and grid
+  SHA-256 `4676878a…`.
+- The cached file is 46,281,243 bytes and its SHA-256 matches the published
+  metadata used by the local arm.
+- The full test suite (132 tests) passes with `acquisition.bounded_requests`
+  forced on by default, covering resume/overlap/watermark, early-EOF coverage
+  checks, decoder termination, and the real-FFmpeg detection/operations tests.
+
+These are three ordered pairs, not a randomized throughput estimate.
+
+### Persistent-connection section shape
+
+The open validation is resolved. FFmpeg debug `Statistics:` lines for
+production-shaped `-ss`/`-t` sections show:
+
+| Treatment | Connections | Requests | Reconnections |
+|---|---:|---:|---:|
+| Unbounded `-ss 0/60 -t 30` | 2 | 2 | 0 |
+| `-request_size` only | 3 | 3 | 0 |
+| `-request_size` + `-multiple_requests 1` | 2 | 2–6 | 0 |
+
+Without persistence every bounded Range request opens its own connection
+(connections track requests). With `-multiple_requests 1`, all post-probe media
+requests share one connection and the connection count stays at **2** regardless
+of `-ss` (0, 60, 120 s), section length, or the number of bounded requests: one
+initial header/probe connection plus one reused media connection. There are no
+reconnections. The earlier second-connection seek behavior does not recur per
+section; it is limited to FFmpeg's initial probe on 9.0.2.
+
+Known follow-up (pre-existing, out of scope here): remote `dimensions` can be
+absent, in which case `sample_frames` calls `probe()` and sends `ffprobe` to the
+remote URL without the bounded options. That path still uses unbounded requests
+and should be brought under the same acquisition policy later.
+
 ## Evidence
 
 Scratch probes retained locally under `output/` (gitignored): `ff9_probe.py`,
 `head2head.py`, `ff9_repeat.py`, `ff9_attrib.py`, `ff9_variants.py`,
-`av1_probe.py`. The diagnostic `eval/attribute_acquisition.py` `bounded_proxy`
-remains available for attribution experiments only; it is not production code.
+`av1_probe.py`, and the Phase B checks `phaseb_check.py` (RGB/grid/cache hashes)
+and `phaseb_connections.py` (connection-shape counts). The diagnostic
+`eval/attribute_acquisition.py` `bounded_proxy` remains available for attribution
+experiments only; it is not production code.
 
 Installed software for these measurements: FFmpeg 9.0.2 essentials (gyan),
 yt-dlp 2026.08.19.
